@@ -1,13 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+
+type AuthMode = "magic-link" | "password";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [mode, setMode] = useState<AuthMode>("password");
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -15,18 +21,33 @@ export default function LoginPage() {
     setError(null);
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
 
-    if (error) {
-      setError(error.message);
+    if (mode === "password") {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        setError(error.message);
+      } else {
+        router.push("/dashboard");
+      }
     } else {
-      setSent(true);
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (error) {
+        setError(error.message);
+      } else {
+        setSent(true);
+      }
     }
+
     setLoading(false);
   }
 
@@ -76,6 +97,27 @@ export default function LoginPage() {
                 required
                 className="w-full bg-surface border border-border rounded px-3 py-2 text-text text-sm placeholder:text-dim focus:outline-none focus:border-accent transition-colors"
               />
+
+              {mode === "password" && (
+                <>
+                  <label
+                    htmlFor="password"
+                    className="block text-sm text-muted mb-2 mt-4"
+                  >
+                    Password
+                  </label>
+                  <input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Your password"
+                    required
+                    className="w-full bg-surface border border-border rounded px-3 py-2 text-text text-sm placeholder:text-dim focus:outline-none focus:border-accent transition-colors"
+                  />
+                </>
+              )}
+
               {error && (
                 <p className="mt-2 text-status-red text-sm">{error}</p>
               )}
@@ -84,7 +126,26 @@ export default function LoginPage() {
                 disabled={loading}
                 className="mt-4 w-full bg-accent text-surface font-medium text-sm rounded px-4 py-2 hover:bg-accent-dim transition-colors disabled:opacity-50"
               >
-                {loading ? "Sending..." : "Send magic link"}
+                {loading
+                  ? mode === "password"
+                    ? "Signing in..."
+                    : "Sending..."
+                  : mode === "password"
+                    ? "Sign in"
+                    : "Send magic link"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMode(mode === "password" ? "magic-link" : "password");
+                  setError(null);
+                }}
+                className="mt-3 w-full text-muted text-sm hover:text-text transition-colors"
+              >
+                {mode === "password"
+                  ? "Use magic link instead"
+                  : "Use password instead"}
               </button>
             </div>
           </form>
