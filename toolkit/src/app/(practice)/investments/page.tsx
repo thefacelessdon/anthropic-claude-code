@@ -7,7 +7,7 @@ import {
   INVESTMENT_CATEGORY_LABELS,
 } from "@/lib/utils/constants";
 import { InvestmentsView } from "@/components/practice/views/InvestmentsView";
-import type { Investment } from "@/lib/supabase/types";
+import type { Investment, Practitioner } from "@/lib/supabase/types";
 
 const NWA_ECOSYSTEM_ID = "a0000000-0000-0000-0000-000000000001";
 
@@ -18,13 +18,20 @@ export const metadata = {
 export default async function InvestmentsPage() {
   const supabase = createClient();
 
-  const { data } = await supabase
-    .from("investments")
-    .select("*")
-    .eq("ecosystem_id", NWA_ECOSYSTEM_ID)
-    .order("created_at", { ascending: false });
+  const [{ data }, { data: practData }] = await Promise.all([
+    supabase
+      .from("investments")
+      .select("*")
+      .eq("ecosystem_id", NWA_ECOSYSTEM_ID)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("practitioners")
+      .select("*")
+      .eq("ecosystem_id", NWA_ECOSYSTEM_ID),
+  ]);
 
   const investments = (data as Investment[]) || [];
+  const practitioners = (practData as Practitioner[]) || [];
 
   const totalAmount = investments.reduce((sum, inv) => sum + (inv.amount || 0), 0);
   const compounding = investments.filter((i) => i.compounding === "compounding");
@@ -140,7 +147,7 @@ export default async function InvestmentsPage() {
           description="Investments will appear here once added to the ecosystem."
         />
       ) : (
-        <InvestmentsView investments={investments} />
+        <InvestmentsView investments={investments} practitioners={practitioners} />
       )}
     </div>
   );
