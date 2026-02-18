@@ -336,7 +336,7 @@ CREATE TABLE narratives (
   date DATE,
   narrative_text TEXT NOT NULL,   -- what's being said
   reality_text TEXT,              -- what's actually happening
-  gap gap_level DEFAULT 'unknown',
+  gap gap_level DEFAULT 'medium',
   evidence_notes TEXT,            -- what data supports the reality assessment
   source_url TEXT,
   last_reviewed_at TIMESTAMPTZ DEFAULT now(),

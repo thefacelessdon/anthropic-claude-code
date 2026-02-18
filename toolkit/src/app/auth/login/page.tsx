@@ -1,0 +1,95 @@
+"use client";
+
+import { useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+
+export default function LoginPage() {
+  const [email, setEmail] = useState("");
+  const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    const supabase = createClient();
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+
+    if (error) {
+      setError(error.message);
+    } else {
+      setSent(true);
+    }
+    setLoading(false);
+  }
+
+  return (
+    <div className="min-h-screen bg-surface flex items-center justify-center px-4">
+      <div className="w-full max-w-sm">
+        <div className="mb-8">
+          <h1 className="text-2xl font-semibold text-text">
+            Cultural Architecture Toolkit
+          </h1>
+          <p className="mt-2 text-muted text-sm">
+            Sign in to access the practice surface
+          </p>
+        </div>
+
+        {sent ? (
+          <div className="bg-card border border-border rounded-lg p-6">
+            <div className="text-status-green text-sm font-medium mb-1">
+              Check your email
+            </div>
+            <p className="text-muted text-sm">
+              We sent a magic link to{" "}
+              <span className="text-text">{email}</span>. Click it to sign in.
+            </p>
+            <button
+              onClick={() => setSent(false)}
+              className="mt-4 text-accent text-sm hover:text-accent-dim transition-colors"
+            >
+              Use a different email
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleLogin}>
+            <div className="bg-card border border-border rounded-lg p-6">
+              <label
+                htmlFor="email"
+                className="block text-sm text-muted mb-2"
+              >
+                Email address
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                required
+                className="w-full bg-surface border border-border rounded px-3 py-2 text-text text-sm placeholder:text-dim focus:outline-none focus:border-accent transition-colors"
+              />
+              {error && (
+                <p className="mt-2 text-status-red text-sm">{error}</p>
+              )}
+              <button
+                type="submit"
+                disabled={loading}
+                className="mt-4 w-full bg-accent text-surface font-medium text-sm rounded px-4 py-2 hover:bg-accent-dim transition-colors disabled:opacity-50"
+              >
+                {loading ? "Sending..." : "Send magic link"}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
