@@ -1,10 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
-import { Card, CardHeader } from "@/components/ui/Card";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { formatDate } from "@/lib/utils/formatting";
-import { GAP_LABELS } from "@/lib/utils/constants";
+import { GAP_LABELS, NARRATIVE_SOURCE_LABELS } from "@/lib/utils/constants";
 import type { Narrative } from "@/lib/supabase/types";
 
 const NWA_ECOSYSTEM_ID = "a0000000-0000-0000-0000-000000000001";
@@ -17,6 +16,16 @@ function gapColor(gap: string): "green" | "red" | "blue" | "orange" | "dim" {
     aligned: "green",
   };
   return map[gap] || "dim";
+}
+
+function gapBarColor(gap: string): string {
+  const map: Record<string, string> = {
+    high: "bg-status-red",
+    medium: "bg-status-orange",
+    low: "bg-status-blue",
+    aligned: "bg-status-green",
+  };
+  return map[gap] || "bg-dim";
 }
 
 export const metadata = {
@@ -35,6 +44,7 @@ export default async function NarrativesPage() {
   const narratives = (data as Narrative[]) || [];
 
   const highGap = narratives.filter((n) => n.gap === "high").length;
+  const mediumGap = narratives.filter((n) => n.gap === "medium").length;
   const aligned = narratives.filter((n) => n.gap === "aligned").length;
 
   return (
@@ -44,95 +54,113 @@ export default async function NarrativesPage() {
         subtitle="What's being said about this ecosystem versus what's actually happening."
       />
 
-      {/* Summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        <Card>
-          <p className="text-xs text-muted">Total Narratives</p>
-          <p className="text-lg font-semibold text-text mt-1">
-            {narratives.length}
-          </p>
-        </Card>
-        <Card>
-          <p className="text-xs text-muted">High Gap</p>
-          <p className="text-lg font-semibold text-status-red mt-1">
-            {highGap}
-          </p>
-        </Card>
-        <Card>
-          <p className="text-xs text-muted">Aligned</p>
-          <p className="text-lg font-semibold text-status-green mt-1">
-            {aligned}
-          </p>
-        </Card>
+      {/* Summary stats */}
+      <div className="bg-surface-card border border-border rounded-card p-6">
+        <div className="flex items-center gap-8">
+          <div>
+            <span className="font-display text-[28px] font-bold text-text leading-none">
+              {narratives.length}
+            </span>
+            <span className="block text-[11px] text-dim uppercase tracking-[0.08em] mt-1">narratives tracked</span>
+          </div>
+          <div className="flex items-center gap-5">
+            <span className="flex items-center gap-1.5 text-sm">
+              <span className="inline-block w-3 h-3 rounded-sm bg-status-red" />
+              <span className="font-mono font-medium text-text">{highGap}</span>
+              <span className="text-[11px] text-dim">high gap</span>
+            </span>
+            <span className="flex items-center gap-1.5 text-sm">
+              <span className="inline-block w-3 h-3 rounded-sm bg-status-orange" />
+              <span className="font-mono font-medium text-text">{mediumGap}</span>
+              <span className="text-[11px] text-dim">medium</span>
+            </span>
+            <span className="flex items-center gap-1.5 text-sm">
+              <span className="inline-block w-3 h-3 rounded-sm bg-status-green" />
+              <span className="font-mono font-medium text-text">{aligned}</span>
+              <span className="text-[11px] text-dim">aligned</span>
+            </span>
+          </div>
+        </div>
       </div>
 
-      {/* Narrative list */}
-      <Card>
-        <CardHeader
-          title="All Narratives"
-          description={`${narratives.length} narratives tracked`}
+      {/* Narrative cards with thick gap bar */}
+      {narratives.length === 0 ? (
+        <EmptyState
+          title="No narratives yet"
+          description="Narratives will appear here once documented."
         />
-        {narratives.length === 0 ? (
-          <EmptyState
-            title="No narratives yet"
-            description="Narratives will appear here once documented"
-          />
-        ) : (
-          <div className="space-y-4">
-            {narratives.map((n) => (
-              <div
-                key={n.id}
-                className="border border-border rounded-lg p-4 hover:border-border-medium transition-colors"
-              >
-                <div className="flex items-start justify-between gap-3">
+      ) : (
+        <div className="space-y-3">
+          {narratives.map((n) => (
+            <div
+              key={n.id}
+              className="bg-surface-card border border-border rounded-card overflow-hidden hover:border-border-medium transition-all duration-card cursor-pointer group flex"
+            >
+              {/* Thick gap indicator bar — left edge */}
+              <div className={`w-1.5 shrink-0 ${gapBarColor(n.gap)}`} />
+
+              <div className="flex-1 p-6">
+                {/* Header */}
+                <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-2.5 flex-wrap">
                       <StatusBadge
                         label={GAP_LABELS[n.gap] || n.gap}
                         color={gapColor(n.gap)}
                       />
-                      <span className="text-[10px] text-dim uppercase">
-                        {n.source_type}
-                      </span>
+                      {n.date && (
+                        <span className="text-[12px] text-dim">{formatDate(n.date)}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
                       {n.source_name && (
-                        <span className="text-xs text-muted">
-                          — {n.source_name}
-                        </span>
+                        <span className="text-[15px] font-medium text-text">{n.source_name}</span>
                       )}
+                      <span className="text-[11px] text-dim uppercase tracking-wider">
+                        {NARRATIVE_SOURCE_LABELS[n.source_type] || n.source_type}
+                      </span>
                     </div>
-                    <div className="mt-2">
-                      <p className="text-sm text-text">
-                        <span className="text-xs text-muted font-medium mr-1">
-                          Narrative:
-                        </span>
-                        {n.narrative_text}
-                      </p>
-                      {n.reality_text && (
-                        <p className="text-sm text-text mt-1">
-                          <span className="text-xs text-muted font-medium mr-1">
-                            Reality:
-                          </span>
-                          {n.reality_text}
-                        </p>
-                      )}
-                    </div>
-                    {n.evidence_notes && (
-                      <p className="text-xs text-dim mt-2 border-l-2 border-accent-warm/30 pl-2">
-                        {n.evidence_notes}
-                      </p>
-                    )}
-                  </div>
-                  <div className="text-right shrink-0">
-                    {n.date && (
-                      <p className="text-xs text-dim">{formatDate(n.date)}</p>
-                    )}
                   </div>
                 </div>
+
+                {/* Narrative vs Reality */}
+                <div className="mt-4 space-y-3">
+                  <div>
+                    <p className="text-[11px] text-dim uppercase tracking-[0.08em] font-semibold mb-1">
+                      The Narrative
+                    </p>
+                    <p className="text-[13px] text-text leading-relaxed">
+                      {n.narrative_text}
+                    </p>
+                  </div>
+                  {n.reality_text && (
+                    <div>
+                      <p className="text-[11px] text-dim uppercase tracking-[0.08em] font-semibold mb-1">
+                        The Reality
+                      </p>
+                      <p className="text-[13px] text-muted leading-relaxed">
+                        {n.reality_text}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Evidence links */}
+                {n.evidence_notes && (
+                  <p className="text-[12px] text-dim mt-3">
+                    Evidence: <span className="text-muted">{n.evidence_notes}</span>
+                  </p>
+                )}
+
+                {/* View indicator */}
+                <div className="mt-3 text-[12px] text-dim group-hover:text-accent transition-colors text-right">
+                  View details →
+                </div>
               </div>
-            ))}
-          </div>
-        )}
-      </Card>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

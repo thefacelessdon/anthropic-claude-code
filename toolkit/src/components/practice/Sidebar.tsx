@@ -152,18 +152,8 @@ export function Sidebar() {
         </Link>
       </div>
 
-      {/* Dashboard — standalone */}
-      <div className="px-3 pt-4 pb-1">
-        <NavLink
-          href="/dashboard"
-          label="Dashboard"
-          icon="grid"
-          isActive={pathname === "/dashboard"}
-        />
-      </div>
-
       {/* Grouped navigation */}
-      <nav className="flex-1 overflow-y-auto px-3 pb-3">
+      <nav className="flex-1 overflow-y-auto px-3 pt-4 pb-3">
         {NAV_GROUPS.map((group) => (
           <div key={group.title} className="mt-5">
             <span className="block px-3 text-[10px] font-body font-semibold text-dim tracking-widest uppercase mb-2">

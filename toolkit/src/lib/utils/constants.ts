@@ -76,6 +76,45 @@ export const GAP_COLORS: Record<string, string> = {
   aligned: "status-green",
 };
 
+export const INVESTMENT_CATEGORY_LABELS: Record<string, string> = {
+  direct_artist_support: "Direct Artist Support",
+  strategic_planning: "Strategic Planning",
+  public_art: "Public Art",
+  artist_development: "Artist Development",
+  education_training: "Education & Training",
+  sector_development: "Sector Development",
+  institutional_capacity: "Institutional Capacity",
+  infrastructure: "Infrastructure",
+  programming: "Programming",
+  communications: "Communications",
+};
+
+export const OPPORTUNITY_TYPE_LABELS: Record<string, string> = {
+  grant: "Grant",
+  rfp: "RFP",
+  commission: "Commission",
+  project: "Project",
+  residency: "Residency",
+  program: "Program",
+  fellowship: "Fellowship",
+};
+
+export const OUTPUT_TYPE_LABELS: Record<string, string> = {
+  directional_brief: "Directional Brief",
+  orientation_framework: "Orientation Framework",
+  state_of_ecosystem: "State of Ecosystem",
+  memory_transfer: "Memory Transfer",
+  field_note: "Field Note",
+  foundational_text: "Foundational Text",
+};
+
+export const NARRATIVE_SOURCE_LABELS: Record<string, string> = {
+  institutional: "Institutional",
+  regional_positioning: "Regional Positioning",
+  media_coverage: "Media Coverage",
+  practitioner: "Practitioner",
+};
+
 // ─── Staleness thresholds (days) ─────────────────────
 
 export const STALENESS_THRESHOLDS: Record<string, number> = {
