@@ -28,15 +28,17 @@ export function EcosystemMapView({
 }: EcosystemMapViewProps) {
   const [selectedOrg, setSelectedOrg] = useState<string | null>(null);
   const [selectedPractitioner, setSelectedPractitioner] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"orgs" | "practitioners">("orgs");
   const searchParams = useSearchParams();
 
   useEffect(() => {
     const openId = searchParams.get("open");
     if (!openId) return;
-    // Try org first, fall back to practitioner
     if (organizations.some((o) => o.id === openId)) {
+      setActiveTab("orgs");
       setSelectedOrg(openId);
     } else if (practitioners.some((p) => p.id === openId)) {
+      setActiveTab("practitioners");
       setSelectedPractitioner(openId);
     }
   }, [searchParams, organizations, practitioners]);
@@ -48,20 +50,34 @@ export function EcosystemMapView({
 
   return (
     <>
-      {/* Tab-style section headers */}
-      <div className="flex items-center gap-1 border-b border-border">
-        <a href="#orgs" className="px-4 py-2.5 text-sm font-medium text-text border-b-2 border-accent">
+      {/* Tab bar */}
+      <div className="flex items-center gap-1 border-b border-border mb-6">
+        <button
+          onClick={() => setActiveTab("orgs")}
+          className={`px-4 py-2.5 text-sm font-medium transition-colors ${
+            activeTab === "orgs"
+              ? "text-text border-b-2 border-accent"
+              : "text-muted hover:text-text"
+          }`}
+        >
           Organizations
           <span className="ml-1.5 text-[11px] text-dim font-mono">{organizations.length}</span>
-        </a>
-        <a href="#practitioners" className="px-4 py-2.5 text-sm font-medium text-muted hover:text-text transition-colors">
+        </button>
+        <button
+          onClick={() => setActiveTab("practitioners")}
+          className={`px-4 py-2.5 text-sm font-medium transition-colors ${
+            activeTab === "practitioners"
+              ? "text-text border-b-2 border-accent"
+              : "text-muted hover:text-text"
+          }`}
+        >
           Practitioners
           <span className="ml-1.5 text-[11px] text-dim font-mono">{practitioners.length}</span>
-        </a>
+        </button>
       </div>
 
       {/* ── Organizations ────────────────────────────────── */}
-      <div id="orgs">
+      {activeTab === "orgs" && (
         <CardList>
           {organizations.map((o) => {
             const counts = orgConnectionCounts[o.id] || { investments: 0, decisions: 0, opportunities: 0 };
@@ -113,21 +129,10 @@ export function EcosystemMapView({
             );
           })}
         </CardList>
-      </div>
+      )}
 
       {/* ── Practitioners ────────────────────────────────── */}
-      <div id="practitioners" className="pt-2">
-        <div className="flex items-center gap-1 border-b border-border mb-6">
-          <a href="#orgs" className="px-4 py-2.5 text-sm font-medium text-muted hover:text-text transition-colors">
-            Organizations
-            <span className="ml-1.5 text-[11px] text-dim font-mono">{organizations.length}</span>
-          </a>
-          <span className="px-4 py-2.5 text-sm font-medium text-text border-b-2 border-accent">
-            Practitioners
-            <span className="ml-1.5 text-[11px] text-dim font-mono">{practitioners.length}</span>
-          </span>
-        </div>
-
+      {activeTab === "practitioners" && (
         <CardList>
           {practitioners.map((p) => (
             <ListCard
@@ -176,7 +181,7 @@ export function EcosystemMapView({
             </ListCard>
           ))}
         </CardList>
-      </div>
+      )}
 
       {/* ── Organization Detail Panel ────────────────────── */}
       <DetailPanel
