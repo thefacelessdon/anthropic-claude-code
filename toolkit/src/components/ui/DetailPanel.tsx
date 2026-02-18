@@ -49,8 +49,8 @@ export function DetailPanel({
         onClick={onClose}
       />
 
-      {/* Panel */}
-      <div className="relative w-[55%] min-w-[500px] max-w-[800px] h-full bg-surface-card border-l border-border animate-slide-in-right flex flex-col">
+      {/* Panel — full width on mobile, 55% on desktop */}
+      <div className="relative w-full sm:w-[70%] md:w-[55%] sm:min-w-[400px] md:min-w-[500px] max-w-[800px] h-full bg-surface-card border-l border-border animate-slide-in-right flex flex-col">
         {/* Header */}
         <div className="shrink-0 px-6 py-4 border-b border-border">
           <div className="flex items-center justify-between mb-3">
