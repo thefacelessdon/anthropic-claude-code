@@ -1,19 +1,30 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 type AuthMode = "magic-link" | "password";
 
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<AuthMode>("password");
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isSignUp, setIsSignUp] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirect") || "/dashboard";
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -23,15 +34,23 @@ export default function LoginPage() {
     const supabase = createClient();
 
     if (mode === "password") {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        setError(error.message);
+      if (isSignUp) {
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) {
+          setError(error.message);
+        } else {
+          router.push(redirectTo);
+        }
       } else {
-        router.push("/dashboard");
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) {
+          setError(error.message);
+        } else {
+          router.push(redirectTo);
+        }
       }
     } else {
       const { error } = await supabase.auth.signInWithOtp({
@@ -128,10 +147,10 @@ export default function LoginPage() {
               >
                 {loading
                   ? mode === "password"
-                    ? "Signing in..."
+                    ? isSignUp ? "Creating account..." : "Signing in..."
                     : "Sending..."
                   : mode === "password"
-                    ? "Sign in"
+                    ? isSignUp ? "Create account" : "Sign in"
                     : "Send magic link"}
               </button>
 
@@ -147,6 +166,21 @@ export default function LoginPage() {
                   ? "Use magic link instead"
                   : "Use password instead"}
               </button>
+
+              {mode === "password" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSignUp(!isSignUp);
+                    setError(null);
+                  }}
+                  className="mt-2 w-full text-muted text-sm hover:text-text transition-colors"
+                >
+                  {isSignUp
+                    ? "Already have an account? Sign in"
+                    : "Need an account? Sign up"}
+                </button>
+              )}
             </div>
           </form>
         )}

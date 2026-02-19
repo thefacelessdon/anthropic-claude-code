@@ -42,7 +42,11 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/settings") ||
     request.nextUrl.pathname.startsWith("/opportunity-tracker");
 
-  if (isPracticeRoute && !user) {
+  const isAuthRequiredPublic =
+    request.nextUrl.pathname === "/profile" ||
+    request.nextUrl.pathname.startsWith("/engagements/");
+
+  if ((isPracticeRoute || isAuthRequiredPublic) && !user) {
     const url = request.nextUrl.clone();
     url.pathname = "/auth/login";
     url.searchParams.set("redirect", request.nextUrl.pathname);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { formatCurrency, daysUntil } from "@/lib/utils/formatting";
 import { OPPORTUNITY_TYPE_LABELS } from "@/lib/utils/constants";
@@ -82,7 +82,6 @@ export function PublicOpportunities({
   const [typeFilter, setTypeFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [sort, setSort] = useState<SortKey>("deadline");
-  const [detailId, setDetailId] = useState<string | null>(null);
 
   /* Derive filter options from data */
   const types = useMemo(() => {
@@ -144,12 +143,6 @@ export function PublicOpportunities({
   const typeActive = typeFilter !== "all";
   const sourceActive = sourceFilter !== "all";
 
-  /* Detail overlay */
-  const detail = detailId
-    ? opportunities.find((o) => o.id === detailId) ?? null
-    : null;
-
-  const closeDetail = useCallback(() => setDetailId(null), []);
 
   /* Build summary text */
   const summaryLabel = useMemo(() => {
@@ -255,7 +248,6 @@ export function PublicOpportunities({
             <OpportunityCard
               key={opp.id}
               opportunity={opp}
-              onDetail={() => setDetailId(opp.id)}
             />
           ))}
         </div>
@@ -275,10 +267,6 @@ export function PublicOpportunities({
         </p>
       </footer>
 
-      {/* ── Detail Overlay ──────────────────────────────── */}
-      {detail && (
-        <DetailOverlay opportunity={detail} onClose={closeDetail} />
-      )}
     </div>
   );
 }
@@ -287,10 +275,8 @@ export function PublicOpportunities({
 
 function OpportunityCard({
   opportunity: opp,
-  onDetail,
 }: {
   opportunity: PublicOpportunity;
-  onDetail: () => void;
 }) {
   const amount = formatAmount(
     opp.amount_min,
@@ -336,132 +322,11 @@ function OpportunityCard({
         <p className="pub-card-eligibility">{opp.eligibility}</p>
       )}
 
-      {/* Apply / Details link */}
-      {opp.application_url ? (
-        <a
-          href={opp.application_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="pub-card-apply"
-        >
-          Apply &rarr;
-        </a>
-      ) : (
-        <button onClick={onDetail} className="pub-card-apply">
-          Details &rarr;
-        </button>
-      )}
+      {/* Details link */}
+      <Link href={`/opportunities/${opp.id}`} className="pub-card-apply">
+        Details &rarr;
+      </Link>
     </div>
   );
 }
 
-/* ── Detail Overlay ────────────────────────────────────── */
-
-function DetailOverlay({
-  opportunity: opp,
-  onClose,
-}: {
-  opportunity: PublicOpportunity;
-  onClose: () => void;
-}) {
-  const amount = formatAmount(
-    opp.amount_min,
-    opp.amount_max,
-    opp.amount_description
-  );
-  const dl = deadlineDisplay(opp.deadline);
-  const typeClass = TYPE_CLASSES[opp.opportunity_type] || "pub-type-default";
-
-  return (
-    <div className="pub-overlay" onClick={onClose}>
-      <div className="pub-detail-card" onClick={(e) => e.stopPropagation()}>
-        <button className="pub-detail-close" onClick={onClose}>
-          &times;
-        </button>
-
-        <span className={`pub-card-type ${typeClass}`} style={{ marginBottom: 12, display: "inline-block" }}>
-          {OPPORTUNITY_TYPE_LABELS[opp.opportunity_type] ||
-            opp.opportunity_type}
-        </span>
-
-        <h2 className="pub-detail-title">{opp.title}</h2>
-
-        {amount && (
-          <p className="pub-detail-amount">{amount}</p>
-        )}
-
-        {opp.source_name && (
-          <div className="pub-detail-field">
-            <span className="pub-detail-label">Source</span>
-            <p>{opp.source_name}</p>
-          </div>
-        )}
-
-        {dl && (
-          <div className="pub-detail-field">
-            <span className="pub-detail-label">Deadline</span>
-            <p>
-              {dl.dateStr}
-              {dl.days !== null && (
-                <span
-                  className={`pub-detail-countdown ${countdownClass(dl.days)}`}
-                >
-                  {" "}
-                  ({dl.days <= 0 ? "Past deadline" : `${dl.days} days remaining`})
-                </span>
-              )}
-            </p>
-          </div>
-        )}
-
-        {opp.description && (
-          <div className="pub-detail-field">
-            <span className="pub-detail-label">Description</span>
-            <p className="pub-detail-text">{opp.description}</p>
-          </div>
-        )}
-
-        {opp.eligibility && (
-          <div className="pub-detail-field">
-            <span className="pub-detail-label">Eligibility</span>
-            <p className="pub-detail-text">{opp.eligibility}</p>
-          </div>
-        )}
-
-        {opp.contact_email && (
-          <div className="pub-detail-field">
-            <span className="pub-detail-label">Contact</span>
-            <p>
-              <a
-                href={`mailto:${opp.contact_email}`}
-                className="pub-link"
-              >
-                {opp.contact_email}
-              </a>
-            </p>
-          </div>
-        )}
-
-        {opp.application_url && (
-          <a
-            href={opp.application_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="pub-detail-apply"
-          >
-            Apply &rarr;
-          </a>
-        )}
-
-        {!opp.application_url && (
-          <Link
-            href="/opportunities/submit"
-            className="pub-detail-interest"
-          >
-            Submit interest &rarr;
-          </Link>
-        )}
-      </div>
-    </div>
-  );
-}
