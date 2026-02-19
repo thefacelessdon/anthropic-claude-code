@@ -7,7 +7,7 @@ import type { Opportunity, Investment, Organization } from "@/lib/supabase/types
 const NWA_ECOSYSTEM_ID = "a0000000-0000-0000-0000-000000000001";
 
 export const metadata = {
-  title: "Opportunities — Cultural Architecture Toolkit",
+  title: "Opportunity Tracker — Cultural Architecture Toolkit",
 };
 
 export default async function OpportunitiesPage() {
