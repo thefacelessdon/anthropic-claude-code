@@ -339,6 +339,7 @@ CREATE TABLE narratives (
   gap gap_level DEFAULT 'medium',
   evidence_notes TEXT,            -- what data supports the reality assessment
   source_url TEXT,
+  significance TEXT,              -- why this gap matters for upcoming decisions
   last_reviewed_at TIMESTAMPTZ DEFAULT now(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()

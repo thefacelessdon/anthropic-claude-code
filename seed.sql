@@ -486,47 +486,49 @@ UPDATE opportunities SET awarded_investment_id = 'c0000000-0000-0000-0000-000000
 -- NARRATIVES (8)
 -- ──────────────────────────────────────────
 
-INSERT INTO narratives (ecosystem_id, source_org_id, source_name, source_type, date, narrative_text, reality_text, gap, evidence_notes, source_url) VALUES
+INSERT INTO narratives (ecosystem_id, source_org_id, source_name, source_type, date, narrative_text, reality_text, gap, evidence_notes, source_url, significance) VALUES
 
 ('a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000008', 'City of Bentonville - Economic Development Office', 'regional_positioning', '2026-01-15',
  'Marketing campaign positions Bentonville as "The Creative Capital of the South." Campaign emphasizes Crystal Bridges, the trail system, tech startup scene, and "thriving creative community."',
  'Investment ledger shows total cultural funding flat year-over-year when adjusted for inflation. Practitioner layer shows net outflow of musicians and filmmakers over 18 months. CACHE census shows practitioner income declining in real terms despite rising institutional investment. The "creative community" the campaign references is primarily institutional employees, not independent practitioners.',
- 'high', 'Investment ledger: flat cultural funding. Practitioner data: net outflow in music/film. CACHE census: income decline.', NULL),
+ 'high', 'Investment ledger: flat cultural funding. Practitioner data: net outflow in music/film. CACHE census: income decline.', NULL,
+ 'This narrative is actively shaping public perception and may influence the FY2027 budget deliberation (locks Nov 1). If decision-makers believe the "Creative Capital" story is already true, there is no pressure to increase municipal cultural investment. The gap between marketing narrative and investment reality needs to surface before budget deliberation begins in June. Deliver investment landscape data to Sarah Collins.'),
 
 ('a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', 'CACHE Annual Report 2025', 'institutional', '2025-12-01',
  'Reports "record investment in NWA creative economy" and highlights grant program expansion. Emphasizes reach across disciplines and growing total dollars.',
  'Total grant dollars increased but number of unique recipients decreased from Cycle 1 to Cycle 2. Larger grants concentrating in established organizations. Average individual practitioner grant is smaller than 2023. Report doesn''t mention concentration trend.',
- 'medium', 'Investment ledger: compare Cycle 1 vs Cycle 2 unique recipients. Cycle 1: 28 unique. Cycle 2: 32 grants but several orgs received multiple awards.', NULL),
+ 'medium', 'Investment ledger: compare Cycle 1 vs Cycle 2 unique recipients. Cycle 1: 28 unique. Cycle 2: 32 grants but several orgs received multiple awards.', NULL,
+ 'CACHE''s claim of "record investment" is being referenced in their board materials for the 2026 Grant Cycle deliberation (locks Mar 14). If the board sees total dollars as the success metric, the concentration trend in Cycle 2 — fewer recipients, larger average grants to institutions — will be accepted as normal. The directional brief for the Feb board meeting should present the distribution data alongside the total.'),
 
 ('a0000000-0000-0000-0000-000000000001', NULL, 'Northwest Arkansas Democrat-Gazette', 'media_coverage', '2026-02-01',
  'Feature series on NWA arts scene emphasizes Crystal Bridges expansion, Momentary programming, new restaurant/gallery openings, and BFF national recognition. Frames NWA as "arriving" culturally.',
  'Coverage focused entirely on institutional and commercial cultural activity. No mention of practitioner retention challenges, studio space costs, venue infrastructure gaps, or the gap between institutional investment and independent practitioner economic reality. No practitioner voices in the series.',
- 'medium', 'Narrative record: compare coverage topics with practitioner interview themes. Zero overlap.', NULL),
+ 'medium', 'Narrative record: compare coverage topics with practitioner interview themes. Zero overlap.', NULL, NULL),
 
 ('a0000000-0000-0000-0000-000000000001', NULL, 'Practitioner Interviews (Aggregated)', 'practitioner', '2026-02-01',
  'Consistent theme across 12 interviews: NWA is exciting and affordable but "hard to make a living as an artist." Appreciation for institutional presence (Crystal Bridges, TheatreSquared) but persistent sense that opportunities flow to established players and non-local artists. Several practitioners considering leaving.',
  'Aligns with investment ledger data showing concentration of funding in institutions vs. direct practitioner support. Opportunity layer shows most high-value opportunities ($10K+) require institutional affiliation or national reputation. Public art program criticism validated by precedent archive data.',
- 'aligned', 'Practitioner narrative matches system data. This is the most reliable narrative because it comes from direct experience.', NULL),
+ 'aligned', 'Practitioner narrative matches system data. This is the most reliable narrative because it comes from direct experience.', NULL, NULL),
 
 ('a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002', 'Walton Family Foundation - Annual Strategy Document', 'institutional', '2025-11-01',
  'Describes cultural investment as "catalytic" and positions NWA as a model for cultural development in mid-sized regions. Emphasizes Crystal Bridges, trail system, and placemaking as signature achievements.',
  'The catalytic framing is accurate for physical infrastructure and institutional capacity. Less accurate for creative practitioner ecosystem. WFF investment has primarily flowed to large-scale infrastructure and institutions, not to the conditions that allow independent creative practitioners to sustain careers. The "model for mid-sized regions" narrative is premature without solving the practitioner sustainability gap.',
- 'medium', 'Investment ledger: WFF cultural spend breakdown shows 80%+ to infrastructure and institutions, <5% to direct practitioner support.', NULL),
+ 'medium', 'Investment ledger: WFF cultural spend breakdown shows 80%+ to infrastructure and institutions, <5% to direct practitioner support.', NULL, NULL),
 
 ('a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000007', 'BFF Press Materials', 'institutional', '2025-09-01',
  'Describes BFF as "transforming NWA into a year-round filmmaking destination" and highlights filmmaker residency pipeline and local production growth.',
  'Festival is successful as an annual event. But "year-round filmmaking destination" is not supported by the data. There is no post-production infrastructure in NWA. Local crew base is thin. Filmmaker D (sample practitioner) reports insufficient year-round work. The "residency pipeline" has placed 3 filmmakers in NWA over 5 years, 1 of whom has already left.',
- 'high', 'Practitioner data: Filmmaker D. Investment ledger: BFF sponsorship is event-focused with no year-round infrastructure investment.', NULL),
+ 'high', 'Practitioner data: Filmmaker D. Investment ledger: BFF sponsorship is event-focused with no year-round infrastructure investment.', NULL, NULL),
 
 ('a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000004', 'Crystal Bridges Community Impact Report', 'institutional', '2025-10-01',
  'Reports "deep community engagement" with 1.2M annual visitors, 50,000 education program participants, and 30 community artists in active roster.',
  'Visitor and participation numbers are real and impressive. But "deep community engagement" conflates tourism/visitation with creative ecosystem impact. The 30 community artists receive minimal financial support. The institution''s economic impact flows primarily to its own operations and employees, not to the broader creative community.',
- 'medium', 'Compare CB reported impact metrics with practitioner income data from CACHE census. Different stories.', NULL),
+ 'medium', 'Compare CB reported impact metrics with practitioner income data from CACHE census. Different stories.', NULL, NULL),
 
 ('a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000009', 'Fayetteville Mayor - State of the City', 'regional_positioning', '2026-01-20',
  'Highlights Fayetteville''s "organic creative culture" and positions the city as "the artistic heart of NWA." Emphasizes university connection, local music scene, and cultural district as evidence.',
  'More aligned with reality than Bentonville''s positioning. Fayetteville does have stronger grassroots creative community per capita. But "artistic heart of NWA" risks overstating what is actually a small, fragile scene dependent on university employment and low rents. Cultural district has not generated significant new investment.',
- 'low', 'Fayetteville narrative is closer to reality but still somewhat aspirational. Key risk: if rents rise or UA contracts, the organic culture is vulnerable.', NULL);
+ 'low', 'Fayetteville narrative is closer to reality but still somewhat aspirational. Key risk: if rents rise or UA contracts, the organic culture is vulnerable.', NULL, NULL);
 
 
 -- ──────────────────────────────────────────

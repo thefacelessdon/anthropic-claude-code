@@ -237,6 +237,7 @@ export interface Narrative {
   gap: GapLevel;
   evidence_notes: string | null;
   source_url: string | null;
+  significance: string | null;
   last_reviewed_at: string | null;
   created_at: string;
   updated_at: string;
