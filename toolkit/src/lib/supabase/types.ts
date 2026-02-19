@@ -324,12 +324,23 @@ export interface PublicProfile {
   updated_at: string;
 }
 
+export type InterestStatus = 'expressed' | 'applied' | 'awarded' | 'not_awarded' | 'withdrew' | 'did_not_apply';
+
 export interface OpportunityInterest {
   id: string;
   opportunity_id: string;
-  profile_id: string;
+  profile_id: string | null;
+  practitioner_name: string | null;
+  practitioner_email: string | null;
+  practitioner_discipline: string | null;
   notes: string | null;
+  status: InterestStatus;
+  followed_up_at: string | null;
+  followup_response: Record<string, unknown> | null;
+  outcome_notes: string | null;
+  practitioner_id: string | null;
   created_at: string;
+  updated_at: string;
 }
 
 export interface Engagement {

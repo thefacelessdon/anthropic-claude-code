@@ -6,6 +6,9 @@ import type { Opportunity, Investment, Organization } from "@/lib/supabase/types
 
 const NWA_ECOSYSTEM_ID = "a0000000-0000-0000-0000-000000000001";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function raw(supabase: any, table: string) { return supabase.from(table); }
+
 export const metadata = {
   title: "Opportunity Tracker — Cultural Architecture Toolkit",
 };
@@ -13,7 +16,7 @@ export const metadata = {
 export default async function OpportunitiesPage() {
   const supabase = createClient();
 
-  const [{ data: oppData }, { data: investmentData }, { data: orgData }] = await Promise.all([
+  const [{ data: oppData }, { data: investmentData }, { data: orgData }, { data: interestData }] = await Promise.all([
     supabase
       .from("opportunities")
       .select("*")
@@ -27,6 +30,8 @@ export default async function OpportunitiesPage() {
       .from("organizations")
       .select("id, name")
       .eq("ecosystem_id", NWA_ECOSYSTEM_ID),
+    raw(supabase, "opportunity_interests")
+      .select("id, opportunity_id, profile_id, practitioner_name, practitioner_email, practitioner_discipline, notes, status, created_at"),
   ]);
 
   // Resolve source_name from source_org_id when source_name is null
@@ -70,6 +75,25 @@ export default async function OpportunitiesPage() {
     }
   }
 
+  // Build interests-by-opportunity for engagement tracking
+  interface InterestRecord {
+    id: string;
+    opportunity_id: string;
+    profile_id: string | null;
+    practitioner_name: string | null;
+    practitioner_email: string | null;
+    practitioner_discipline: string | null;
+    notes: string | null;
+    status: string;
+    created_at: string;
+  }
+  const interests = (interestData as InterestRecord[]) || [];
+  const interestsByOpp: Record<string, InterestRecord[]> = {};
+  for (const interest of interests) {
+    if (!interestsByOpp[interest.opportunity_id]) interestsByOpp[interest.opportunity_id] = [];
+    interestsByOpp[interest.opportunity_id].push(interest);
+  }
+
   return (
     <div className="space-y-section">
       <PageHeader
@@ -88,6 +112,7 @@ export default async function OpportunitiesPage() {
           investmentMap={investmentMap}
           investmentsByOrg={investmentsByOrg}
           oppsByOrg={oppsByOrg}
+          interestsByOpp={interestsByOpp}
         />
       )}
     </div>

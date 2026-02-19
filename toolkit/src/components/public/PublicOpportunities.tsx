@@ -162,7 +162,7 @@ export function PublicOpportunities({
       <header className="pub-header">
         <h1 className="pub-header-title">NWA Creative Opportunities</h1>
         <p className="pub-header-tagline">
-          Open creative opportunities in Northwest Arkansas
+          Grants, commissions, RFPs, and residencies &mdash; updated weekly
         </p>
       </header>
 
@@ -288,7 +288,11 @@ function OpportunityCard({
   const typeClass = TYPE_CLASSES[opp.opportunity_type] || "pub-type-default";
 
   return (
-    <div className={`pub-card ${closing ? "pub-card--closing-soon" : ""}`}>
+    <Link
+      href={`/opportunities/${opp.id}`}
+      className={`pub-card ${closing ? "pub-card--closing-soon" : ""}`}
+      style={{ textDecoration: "none", color: "inherit" }}
+    >
       {/* Row 1: Type + Amount */}
       <div className="pub-card-header">
         <span className={`pub-card-type ${typeClass}`}>
@@ -321,12 +325,7 @@ function OpportunityCard({
       {opp.eligibility && (
         <p className="pub-card-eligibility">{opp.eligibility}</p>
       )}
-
-      {/* Details link */}
-      <Link href={`/opportunities/${opp.id}`} className="pub-card-apply">
-        Details &rarr;
-      </Link>
-    </div>
+    </Link>
   );
 }
 

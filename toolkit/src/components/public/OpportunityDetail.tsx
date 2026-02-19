@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { formatCurrency, daysUntil } from "@/lib/utils/formatting";
 import { OPPORTUNITY_TYPE_LABELS } from "@/lib/utils/constants";
-import { expressInterest } from "@/app/opportunities/[id]/actions";
+import { expressInterest, submitIntent } from "@/app/opportunities/[id]/actions";
 
 const TYPE_CLASSES: Record<string, string> = {
   grant: "pub-type-grant",
@@ -13,6 +13,23 @@ const TYPE_CLASSES: Record<string, string> = {
   residency: "pub-type-residency",
   fellowship: "pub-type-fellowship",
 };
+
+const DISCIPLINE_OPTIONS = [
+  "Visual Arts",
+  "Graphic / Brand Design",
+  "Architecture / Spatial Design",
+  "Public Art + Fabrication",
+  "Film / Video",
+  "Photography",
+  "Music / Sound",
+  "Writing / Literary Arts",
+  "Performing Arts",
+  "Craft / Textiles",
+  "Digital / New Media",
+  "Curatorial / Arts Admin",
+  "Community Arts / Social Practice",
+  "Other",
+];
 
 interface Props {
   opportunity: {
@@ -39,7 +56,7 @@ interface Props {
     topInvestments: { initiative_name: string; amount: number | null }[];
     otherOpportunities: { id: string; title: string; deadline: string | null }[];
   };
-  interestCount: number;
+  interestCount?: number;
   user: {
     isLoggedIn: boolean;
     hasProfile: boolean;
@@ -57,9 +74,16 @@ function formatAmount(min: number | null, max: number | null, desc: string | nul
   return "";
 }
 
-export function OpportunityDetail({ opportunity: opp, funder, interestCount, user }: Props) {
+export function OpportunityDetail({ opportunity: opp, funder, user }: Props) {
   const [interested, setInterested] = useState(user.hasInterest);
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  // Intent form state
+  const [intentName, setIntentName] = useState("");
+  const [intentEmail, setIntentEmail] = useState("");
+  const [intentDiscipline, setIntentDiscipline] = useState("");
+  const [intentNotes, setIntentNotes] = useState("");
 
   const amount = formatAmount(opp.amount_min, opp.amount_max, opp.amount_description);
   const typeClass = TYPE_CLASSES[opp.opportunity_type] || "pub-type-default";
@@ -72,11 +96,38 @@ export function OpportunityDetail({ opportunity: opp, funder, interestCount, use
       })
     : opp.deadline_description || null;
 
-  async function handleInterest() {
+  // Quick interest for logged-in users with profiles
+  async function handleQuickInterest() {
     if (!user.profileId) return;
     setSubmitting(true);
+    setFormError(null);
     const result = await expressInterest(opp.id, user.profileId);
-    if (result.success) setInterested(true);
+    if (result.success) {
+      setInterested(true);
+    } else {
+      setFormError(result.error || "Something went wrong.");
+    }
+    setSubmitting(false);
+  }
+
+  // Open intent form submission
+  async function handleIntentSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    setFormError(null);
+
+    const result = await submitIntent(opp.id, {
+      name: intentName,
+      email: intentEmail,
+      discipline: intentDiscipline,
+      notes: intentNotes,
+    });
+
+    if (result.success) {
+      setInterested(true);
+    } else {
+      setFormError(result.error || "Something went wrong.");
+    }
     setSubmitting(false);
   }
 
@@ -148,15 +199,18 @@ export function OpportunityDetail({ opportunity: opp, funder, interestCount, use
         )}
 
         {opp.application_url && (
-          <a
-            href={opp.application_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="pub-form-submit"
-            style={{ display: "inline-block", textDecoration: "none", marginTop: 8 }}
-          >
-            View application &rarr;
-          </a>
+          <div style={{ marginBottom: 20 }}>
+            <p className="pub-detail-label">How to Apply</p>
+            <a
+              href={opp.application_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="pub-link"
+              style={{ fontSize: 14 }}
+            >
+              View application page &rarr;
+            </a>
+          </div>
         )}
       </div>
 
@@ -230,66 +284,73 @@ export function OpportunityDetail({ opportunity: opp, funder, interestCount, use
         </div>
       )}
 
-      {/* Section 4: Engagement Path */}
+      {/* Section 4: Intent Signal */}
       <div style={{
         background: "var(--pub-bg-card)",
         border: "1px solid var(--pub-border)",
         borderRadius: 8,
-        padding: "20px 24px",
+        padding: "24px",
       }}>
-        {!user.isLoggedIn ? (
-          <>
-            <p style={{ fontSize: 14, lineHeight: 1.6, marginBottom: 12 }}>
-              <Link href={`/auth/login?redirect=/opportunities/${opp.id}`} className="pub-link">
-                Create a profile
-              </Link>{" "}
-              to express interest and get the most from this platform.
+        {interested ? (
+          /* ── Confirmation View ─────────────────── */
+          <div>
+            <p style={{ fontSize: 16, fontWeight: 500, color: "var(--pub-text-primary)", marginBottom: 16 }}>
+              <span style={{ color: "var(--pub-grant)" }}>&#10003;</span>{" "}
+              Thanks for letting us know.
             </p>
-            <p style={{ fontSize: 13, color: "var(--pub-text-tertiary)" }}>
-              Already have a profile?{" "}
-              <Link href={`/auth/login?redirect=/opportunities/${opp.id}`} className="pub-link">
-                Sign in &rarr;
-              </Link>
+
+            <p style={{ fontSize: 14, lineHeight: 1.6, color: "var(--pub-text-secondary)", marginBottom: 16 }}>
+              Here&rsquo;s what happens next:
             </p>
-          </>
-        ) : !user.hasProfile ? (
-          <>
-            <p style={{ fontSize: 14, lineHeight: 1.6, marginBottom: 12 }}>
-              <Link href="/profile" className="pub-link">
-                Create your profile
-              </Link>{" "}
-              to express interest in opportunities and track engagements.
-            </p>
-          </>
-        ) : interested ? (
-          <>
-            <p style={{ fontSize: 14, color: "var(--pub-text-primary)" }}>
-              <span style={{ color: "var(--pub-grant)" }}>&#10003;</span> Noted. Good luck with your application.
-            </p>
-            {opp.application_url && (
-              <a
-                href={opp.application_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="pub-link"
-                style={{ fontSize: 14, display: "inline-block", marginTop: 8 }}
-              >
-                View application page &rarr;
-              </a>
-            )}
-          </>
-        ) : (
-          <>
-            <p className="pub-detail-label" style={{ marginBottom: 12 }}>
+
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 12 }}>
+              {opp.application_url && (
+                <li style={{ fontSize: 14, lineHeight: 1.5, color: "var(--pub-text-primary)", paddingLeft: 20, position: "relative" }}>
+                  <span style={{ position: "absolute", left: 0, color: "var(--pub-text-tertiary)" }}>&bull;</span>
+                  Apply directly through the funder&rsquo;s application process{" "}
+                  <a
+                    href={opp.application_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="pub-link"
+                    style={{ fontSize: 14 }}
+                  >
+                    View application page &rarr;
+                  </a>
+                </li>
+              )}
+              <li style={{ fontSize: 14, lineHeight: 1.5, color: "var(--pub-text-primary)", paddingLeft: 20, position: "relative" }}>
+                <span style={{ position: "absolute", left: 0, color: "var(--pub-text-tertiary)" }}>&bull;</span>
+                We&rsquo;ll follow up after the deadline to see how it went
+              </li>
+              <li style={{ fontSize: 14, lineHeight: 1.5, color: "var(--pub-text-primary)", paddingLeft: 20, position: "relative" }}>
+                <span style={{ position: "absolute", left: 0, color: "var(--pub-text-tertiary)" }}>&bull;</span>
+                Your interest helps us understand what NWA practitioners need &mdash; and advocate for more opportunities like this
+              </li>
+            </ul>
+          </div>
+        ) : user.isLoggedIn && user.hasProfile && user.profileId ? (
+          /* ── Quick interest for logged-in users with profiles ── */
+          <div>
+            <p className="pub-detail-label" style={{ marginBottom: 8, fontSize: 13 }}>
               Interested in this opportunity?
             </p>
+            <p style={{ fontSize: 14, lineHeight: 1.6, color: "var(--pub-text-secondary)", marginBottom: 16 }}>
+              Let us know you&rsquo;re considering applying. We track engagement across the ecosystem
+              to better understand what practitioners need.
+            </p>
+
+            {formError && (
+              <p className="pub-form-error">{formError}</p>
+            )}
+
             <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
               <button
-                onClick={handleInterest}
+                onClick={handleQuickInterest}
                 disabled={submitting}
                 className="pub-form-submit"
               >
-                {submitting ? "Recording..." : "I\u2019m applying to this \u2192"}
+                {submitting ? "Recording..." : "I\u2019m Interested"}
               </button>
               {opp.application_url && (
                 <a
@@ -303,12 +364,95 @@ export function OpportunityDetail({ opportunity: opp, funder, interestCount, use
                 </a>
               )}
             </div>
-            {interestCount > 0 && (
-              <p style={{ fontSize: 12, color: "var(--pub-text-tertiary)", marginTop: 12, fontFamily: "var(--font-mono)" }}>
-                {interestCount} practitioner{interestCount !== 1 ? "s" : ""} interested
-              </p>
+            <p style={{ fontSize: 12, color: "var(--pub-text-tertiary)", marginTop: 12 }}>
+              We don&rsquo;t share your information with funders without your permission.
+            </p>
+          </div>
+        ) : (
+          /* ── Open intent form (no auth required) ── */
+          <div>
+            <p className="pub-detail-label" style={{ marginBottom: 8, fontSize: 13 }}>
+              Interested in this opportunity?
+            </p>
+            <p style={{ fontSize: 14, lineHeight: 1.6, color: "var(--pub-text-secondary)", marginBottom: 20 }}>
+              Let us know you&rsquo;re considering applying. We track engagement across the ecosystem
+              to better understand what practitioners need.
+            </p>
+
+            {formError && (
+              <p className="pub-form-error">{formError}</p>
             )}
-          </>
+
+            <form onSubmit={handleIntentSubmit} className="pub-form">
+              <div className="pub-form-field">
+                <label className="pub-form-label">
+                  Your name <span className="pub-required">*</span>
+                </label>
+                <input
+                  type="text"
+                  className="pub-form-input"
+                  value={intentName}
+                  onChange={(e) => setIntentName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="pub-form-field">
+                <label className="pub-form-label">
+                  Your discipline <span className="pub-required">*</span>
+                </label>
+                <select
+                  className="pub-form-select"
+                  value={intentDiscipline}
+                  onChange={(e) => setIntentDiscipline(e.target.value)}
+                  required
+                >
+                  <option value="">Select a discipline</option>
+                  {DISCIPLINE_OPTIONS.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="pub-form-field">
+                <label className="pub-form-label">
+                  Email <span className="pub-required">*</span>
+                </label>
+                <input
+                  type="email"
+                  className="pub-form-input"
+                  value={intentEmail}
+                  onChange={(e) => setIntentEmail(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="pub-form-field">
+                <label className="pub-form-label">
+                  Anything we should know? <span className="pub-optional">(optional)</span>
+                </label>
+                <textarea
+                  className="pub-form-textarea"
+                  value={intentNotes}
+                  onChange={(e) => setIntentNotes(e.target.value)}
+                  placeholder={'e.g., "I\'ve worked with ' + (opp.source_name || "this funder") + ' before" or "I\'m not sure I\'m eligible \u2014 can you clarify?"'}
+                  rows={3}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={submitting}
+                className="pub-form-submit"
+              >
+                {submitting ? "Submitting..." : "I\u2019m Interested"}
+              </button>
+
+              <p style={{ fontSize: 12, color: "var(--pub-text-tertiary)", marginTop: 12 }}>
+                We don&rsquo;t share your information with funders without your permission.
+              </p>
+            </form>
+          </div>
         )}
       </div>
     </div>

@@ -122,6 +122,38 @@ function DeadlineCompact({ deadline }: { deadline: string | null }) {
 
 const labelClass = "text-[11px] font-semibold text-dim uppercase tracking-[0.06em]";
 
+/* ── Interest types ────────────────────────────────────── */
+
+interface InterestRecord {
+  id: string;
+  opportunity_id: string;
+  profile_id: string | null;
+  practitioner_name: string | null;
+  practitioner_email: string | null;
+  practitioner_discipline: string | null;
+  notes: string | null;
+  status: string;
+  created_at: string;
+}
+
+const INTEREST_STATUS_LABELS: Record<string, string> = {
+  expressed: "Expressed",
+  applied: "Applied",
+  awarded: "Awarded",
+  not_awarded: "Not selected",
+  withdrew: "Withdrew",
+  did_not_apply: "Did not apply",
+};
+
+const INTEREST_STATUS_COLORS: Record<string, string> = {
+  expressed: "text-muted",
+  applied: "text-status-blue",
+  awarded: "text-status-green",
+  not_awarded: "text-status-red",
+  withdrew: "text-dim",
+  did_not_apply: "text-dim",
+};
+
 /* ── Props ─────────────────────────────────────────────── */
 
 interface OpportunitiesViewProps {
@@ -129,6 +161,7 @@ interface OpportunitiesViewProps {
   investmentMap: Record<string, InvSummary>;
   investmentsByOrg: Record<string, InvSummary[]>;
   oppsByOrg: Record<string, OppRef[]>;
+  interestsByOpp?: Record<string, InterestRecord[]>;
 }
 
 type TabKey = "open" | "closing_soon" | "closed";
@@ -146,6 +179,7 @@ export function OpportunitiesView({
   investmentMap,
   investmentsByOrg,
   oppsByOrg,
+  interestsByOpp = {},
 }: OpportunitiesViewProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("open");
@@ -471,6 +505,96 @@ export function OpportunitiesView({
                 </div>
               </DetailSection>
             )}
+
+            {/* Engagement — Interest Tracking */}
+            {(() => {
+              const interests = interestsByOpp[selected.id] || [];
+              if (interests.length === 0) return null;
+
+              const applied = interests.filter(
+                (i) => i.status === "applied" || i.status === "awarded" || i.status === "not_awarded"
+              ).length;
+              const awarded = interests.filter((i) => i.status === "awarded").length;
+              const notSelected = interests.filter((i) => i.status === "not_awarded").length;
+              const pending = interests.filter((i) => i.status === "expressed").length;
+
+              return (
+                <DetailSection title="Engagement">
+                  <div className="space-y-4">
+                    {/* Summary stats */}
+                    <div className="text-[13px] text-text leading-relaxed">
+                      <span className="font-mono font-semibold">{interests.length}</span>{" "}
+                      practitioner{interests.length !== 1 ? "s" : ""} expressed interest
+                      {applied > 0 && (
+                        <>
+                          {" \u00b7 "}
+                          <span className="font-mono">{applied}</span> applied
+                        </>
+                      )}
+                      {awarded > 0 && (
+                        <>
+                          {" \u00b7 "}
+                          <span className="font-mono text-status-green">{awarded}</span> awarded
+                        </>
+                      )}
+                      {notSelected > 0 && (
+                        <>
+                          {" \u00b7 "}
+                          <span className="font-mono">{notSelected}</span> not selected
+                        </>
+                      )}
+                      {pending > 0 && (
+                        <>
+                          {" \u00b7 "}
+                          <span className="font-mono">{pending}</span> pending
+                        </>
+                      )}
+                    </div>
+
+                    {/* Individual interest records */}
+                    <div className="space-y-2">
+                      {interests.map((interest) => (
+                        <div
+                          key={interest.id}
+                          className="bg-surface-inset rounded-md px-3 py-2.5"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[13px] text-text font-medium truncate">
+                              {interest.practitioner_name || "Anonymous"}
+                            </span>
+                            <span
+                              className={`text-[11px] font-mono ${
+                                INTEREST_STATUS_COLORS[interest.status] || "text-dim"
+                              }`}
+                            >
+                              {INTEREST_STATUS_LABELS[interest.status] || interest.status}
+                            </span>
+                          </div>
+                          {interest.practitioner_discipline && (
+                            <p className="text-[12px] text-muted mt-0.5">
+                              {interest.practitioner_discipline}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[11px] text-dim font-mono">
+                              {new Date(interest.created_at).toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                              })}
+                            </span>
+                          </div>
+                          {interest.notes && (
+                            <p className="text-[12px] text-muted mt-1.5 italic leading-relaxed">
+                              &ldquo;{interest.notes}&rdquo;
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </DetailSection>
+              );
+            })()}
 
             {/* Priority 6: Enriched Across the Toolkit */}
             {(() => {
