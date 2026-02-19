@@ -39,7 +39,8 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/narratives") ||
     request.nextUrl.pathname.startsWith("/outputs") ||
     request.nextUrl.pathname.startsWith("/submissions") ||
-    request.nextUrl.pathname.startsWith("/settings");
+    request.nextUrl.pathname.startsWith("/settings") ||
+    request.nextUrl.pathname.startsWith("/opportunity-tracker");
 
   if (isPracticeRoute && !user) {
     const url = request.nextUrl.clone();

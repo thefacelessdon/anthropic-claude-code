@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, useEffect, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { CardList, ListCard } from "@/components/ui/CardGrid";
 import {
   DetailPanel,
@@ -16,6 +16,25 @@ import {
 } from "@/lib/utils/constants";
 import type { Opportunity } from "@/lib/supabase/types";
 
+/* ── Cross-tool types ─────────────────────────────────── */
+
+interface InvSummary {
+  id: string;
+  source_org_id: string | null;
+  source_name: string | null;
+  initiative_name: string;
+  amount: number | null;
+  status: string;
+  compounding: string;
+}
+
+interface OppRef {
+  id: string;
+  title: string;
+  status: string;
+  deadline: string | null;
+}
+
 /* ── Helpers ───────────────────────────────────────────── */
 
 function statusColor(status: string): "green" | "blue" | "orange" | "dim" {
@@ -28,31 +47,62 @@ function statusColor(status: string): "green" | "blue" | "orange" | "dim" {
   return map[status] || "dim";
 }
 
+/** Priority 1: single amount when min=max, fallback to description */
 function formatAmountRange(min: number | null, max: number | null): string | null {
-  if (min !== null && max !== null) {
-    return `${formatCurrency(min)} \u2013 ${formatCurrency(max)}`;
-  }
-  if (min !== null) return formatCurrency(min);
-  if (max !== null) return `Up to ${formatCurrency(max)}`;
-  return null;
+  if (min === null && max === null) return null;
+  if (min === null) return `Up to ${formatCurrency(max)}`;
+  if (max === null) return `From ${formatCurrency(min)}`;
+  if (min === max) return formatCurrency(min);
+  return `${formatCurrency(min)} \u2013 ${formatCurrency(max)}`;
 }
+
+function formatAmountShort(amount: number | null): string {
+  if (amount === null) return "\u2014";
+  if (amount >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`;
+  if (amount >= 1_000) return `$${(amount / 1_000).toFixed(0)}K`;
+  return `$${amount}`;
+}
+
+/** Priority 9: 4-tier deadline countdown */
+function deadlineColorClass(days: number | null): string {
+  if (days === null) return "text-muted";
+  if (days <= 7) return "text-status-red font-bold";
+  if (days <= 14) return "text-status-red";
+  if (days <= 30) return "text-status-orange";
+  return "text-muted";
+}
+
+/** Priority 7: distinct color per opportunity type */
+function typeBadgeClasses(type: string): string {
+  const map: Record<string, string> = {
+    grant: "text-status-green border-status-green bg-status-green/10",
+    rfp: "text-status-blue border-status-blue bg-status-blue/10",
+    commission: "text-accent border-accent bg-accent/10",
+    residency: "text-status-purple border-status-purple bg-status-purple/10",
+    fellowship: "text-status-orange border-status-orange bg-status-orange/10",
+    project: "text-muted border-border-medium bg-surface-inset",
+    program: "text-muted border-border-medium bg-surface-inset",
+  };
+  return map[type] || "text-accent border-border-accent bg-accent-glow";
+}
+
+const COMPOUNDING_LABELS: Record<string, string> = {
+  compounding: "Compounding",
+  not_compounding: "Not compounding",
+  too_early: "Too early to tell",
+  unknown: "Unknown",
+};
 
 function DaysRemaining({ deadline }: { deadline: string | null }) {
   const days = daysUntil(deadline);
   if (days === null) return null;
-
-  let colorClass = "text-muted";
-  if (days <= 14) colorClass = "text-status-red";
-  else if (days <= 30) colorClass = "text-status-orange";
-
   return (
-    <span className={`font-mono text-[12px] ${colorClass}`}>
+    <span className={`font-mono text-[12px] ${deadlineColorClass(days)}`}>
       {days <= 0 ? "Past deadline" : `${days}d remaining`}
     </span>
   );
 }
 
-/** Short countdown for card row 2 — e.g. "Due Mar 15 (27d)" */
 function DeadlineCompact({ deadline }: { deadline: string | null }) {
   if (!deadline) return null;
   const days = daysUntil(deadline);
@@ -60,27 +110,15 @@ function DeadlineCompact({ deadline }: { deadline: string | null }) {
     month: "short",
     day: "numeric",
   });
-
-  let countdownColor = "text-muted";
-  if (days !== null && days <= 14) countdownColor = "text-status-red";
-  else if (days !== null && days <= 30) countdownColor = "text-status-orange";
-
   const countdownText =
-    days === null
-      ? ""
-      : days <= 0
-        ? "(Past)"
-        : `(${days}d)`;
-
+    days === null ? "" : days <= 0 ? "(Past)" : `(${days}d)`;
   return (
     <span className="font-mono text-[13px]">
       <span className="text-muted">Due {dateStr}</span>{" "}
-      <span className={countdownColor}>{countdownText}</span>
+      <span className={deadlineColorClass(days)}>{countdownText}</span>
     </span>
   );
 }
-
-/* ── Label style ───────────────────────────────────────── */
 
 const labelClass = "text-[11px] font-semibold text-dim uppercase tracking-[0.06em]";
 
@@ -88,130 +126,186 @@ const labelClass = "text-[11px] font-semibold text-dim uppercase tracking-[0.06e
 
 interface OpportunitiesViewProps {
   opportunities: Opportunity[];
-  investmentMap: Record<string, { id: string; initiative_name: string }>;
+  investmentMap: Record<string, InvSummary>;
+  investmentsByOrg: Record<string, InvSummary[]>;
+  oppsByOrg: Record<string, OppRef[]>;
 }
+
+type TabKey = "open" | "closing_soon" | "closed";
+
+const TAB_LABELS: Record<TabKey, string> = {
+  open: "Open",
+  closing_soon: "Closing Soon",
+  closed: "Closed & Awarded",
+};
 
 /* ── Main View ─────────────────────────────────────────── */
 
 export function OpportunitiesView({
   opportunities,
   investmentMap,
+  investmentsByOrg,
+  oppsByOrg,
 }: OpportunitiesViewProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [tab, setTab] = useState<TabKey>("open");
   const searchParams = useSearchParams();
+  const router = useRouter();
 
   useEffect(() => {
     const openId = searchParams.get("open");
     if (openId) setSelectedId(openId);
   }, [searchParams]);
 
-  const opportunityLookup = new Map(opportunities.map((o) => [o.id, o]));
-  const selected = selectedId ? opportunityLookup.get(selectedId) : null;
+  const navigateTo = useCallback(
+    (path: string) => router.push(path),
+    [router]
+  );
 
-  // Split into sections
+  const selected = selectedId
+    ? opportunities.find((o) => o.id === selectedId) ?? null
+    : null;
+
   const closingSoon = opportunities.filter((o) => o.status === "closing_soon");
   const open = opportunities.filter((o) => o.status === "open");
   const closed = opportunities.filter(
     (o) => o.status === "closed" || o.status === "awarded"
   );
 
+  const tabCounts: Record<TabKey, number> = {
+    open: open.length,
+    closing_soon: closingSoon.length,
+    closed: closed.length,
+  };
+
   const amountRange = selected
     ? formatAmountRange(selected.amount_min, selected.amount_max)
     : null;
 
+  const hasApplicationInfo = selected
+    ? !!(selected.application_url || selected.contact_email)
+    : false;
+
   return (
     <>
-      {/* ── Closing Soon ────────────────────────────────── */}
-      {closingSoon.length > 0 && (
-        <div className="mb-8">
-          <h2 className="font-display text-base font-semibold text-text mb-4">
-            Closing Soon
-          </h2>
-          <CardList>
-            {closingSoon.map((opp) => (
-              <OpportunityCard
-                key={opp.id}
-                opportunity={opp}
-                selected={selectedId === opp.id}
-                onClick={() => setSelectedId(opp.id)}
-              />
-            ))}
-          </CardList>
-        </div>
+      {/* Priority 3: Tab bar */}
+      <div className="flex items-center gap-1 mb-6">
+        {(["open", "closing_soon", "closed"] as TabKey[]).map((key) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`px-3 py-1.5 text-[13px] font-medium rounded-md transition-colors ${
+              tab === key
+                ? "bg-surface-inset text-text"
+                : "text-muted hover:text-text"
+            }`}
+          >
+            {TAB_LABELS[key]}
+            <span className="ml-1.5 text-[11px] text-dim bg-surface-inset px-1.5 py-0.5 rounded font-mono">
+              {tabCounts[key]}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* Open tab */}
+      {tab === "open" && (
+        <CardList>
+          {open.map((opp) => (
+            <OpportunityCard
+              key={opp.id}
+              opportunity={opp}
+              selected={selectedId === opp.id}
+              onClick={() => setSelectedId(opp.id)}
+              onOrgClick={
+                opp.source_org_id
+                  ? () => navigateTo(`/ecosystem-map?open=${opp.source_org_id}`)
+                  : undefined
+              }
+            />
+          ))}
+        </CardList>
       )}
 
-      {/* ── Open ────────────────────────────────────────── */}
-      {open.length > 0 && (
-        <div className="mb-8">
-          <h2 className="font-display text-base font-semibold text-text mb-4">
-            Open
-          </h2>
-          <CardList>
-            {open.map((opp) => (
-              <OpportunityCard
-                key={opp.id}
-                opportunity={opp}
-                selected={selectedId === opp.id}
-                onClick={() => setSelectedId(opp.id)}
-              />
-            ))}
-          </CardList>
-        </div>
+      {/* Closing Soon tab */}
+      {tab === "closing_soon" && (
+        <CardList>
+          {closingSoon.map((opp) => (
+            <OpportunityCard
+              key={opp.id}
+              opportunity={opp}
+              selected={selectedId === opp.id}
+              onClick={() => setSelectedId(opp.id)}
+              onOrgClick={
+                opp.source_org_id
+                  ? () => navigateTo(`/ecosystem-map?open=${opp.source_org_id}`)
+                  : undefined
+              }
+            />
+          ))}
+        </CardList>
       )}
 
-      {/* ── Closed & Awarded ────────────────────────────── */}
-      {closed.length > 0 && (
-        <div className="mb-8">
-          <h2 className="font-display text-base font-semibold text-text mb-4">
-            Closed &amp; Awarded
-          </h2>
-          <div className="space-y-1">
-            {closed.map((opp) => {
-              const linkedInvestment = opp.awarded_investment_id
-                ? investmentMap[opp.awarded_investment_id]
-                : null;
-
-              return (
-                <div
-                  key={opp.id}
-                  onClick={() => setSelectedId(opp.id)}
-                  className={`flex items-center gap-3 px-4 py-2.5 rounded-md cursor-pointer transition-colors hover:bg-surface-inset ${
-                    selectedId === opp.id
-                      ? "bg-surface-inset ring-1 ring-accent"
-                      : ""
-                  }`}
+      {/* Closed & Awarded tab */}
+      {tab === "closed" && (
+        <div className="space-y-1">
+          {closed.map((opp) => {
+            const linkedInv = opp.awarded_investment_id
+              ? investmentMap[opp.awarded_investment_id]
+              : null;
+            return (
+              <div
+                key={opp.id}
+                onClick={() => setSelectedId(opp.id)}
+                className={`flex items-center gap-3 px-4 py-2.5 rounded-md cursor-pointer transition-colors hover:bg-surface-inset ${
+                  selectedId === opp.id
+                    ? "bg-surface-inset ring-1 ring-accent"
+                    : ""
+                }`}
+              >
+                <span
+                  className={`text-[11px] uppercase px-2 py-0.5 rounded border ${typeBadgeClasses(
+                    opp.opportunity_type
+                  )}`}
                 >
-                  <span className="text-[11px] uppercase text-accent bg-accent-glow border border-border-accent px-2 py-0.5 rounded shrink-0">
-                    {OPPORTUNITY_TYPE_LABELS[opp.opportunity_type] ||
-                      opp.opportunity_type}
+                  {OPPORTUNITY_TYPE_LABELS[opp.opportunity_type] ||
+                    opp.opportunity_type}
+                </span>
+                <span className="text-[13px] text-text truncate flex-1 min-w-0">
+                  {opp.title}
+                </span>
+                {opp.source_name && (
+                  <span className="text-[12px] text-muted shrink-0">
+                    {opp.source_name}
                   </span>
-                  <span className="text-[13px] text-text truncate">
-                    {opp.title}
+                )}
+                <StatusBadge
+                  label={OPPORTUNITY_STATUS_LABELS[opp.status] || opp.status}
+                  color={statusColor(opp.status)}
+                />
+                {opp.awarded_to && (
+                  <span className="text-[12px] text-muted shrink-0">
+                    {opp.awarded_to}
                   </span>
-                  <StatusBadge
-                    label={
-                      OPPORTUNITY_STATUS_LABELS[opp.status] || opp.status
-                    }
-                    color={statusColor(opp.status)}
-                  />
-                  {opp.awarded_to && (
-                    <span className="text-[12px] text-muted shrink-0">
-                      {opp.awarded_to}
-                    </span>
-                  )}
-                  {linkedInvestment && (
-                    <span className="text-[12px] text-accent shrink-0">
-                      &rarr; Became: {linkedInvestment.initiative_name}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                )}
+                {linkedInv && (
+                  <span
+                    className="text-[12px] text-accent shrink-0 cursor-pointer hover:underline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigateTo(`/investments?open=${linkedInv.id}`);
+                    }}
+                  >
+                    &rarr; {linkedInv.initiative_name}
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* ── Detail Panel ────────────────────────────────── */}
+      {/* Detail Panel */}
       <DetailPanel
         isOpen={!!selected}
         onClose={() => setSelectedId(null)}
@@ -219,19 +313,26 @@ export function OpportunitiesView({
         subtitle={
           selected && (
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] uppercase text-accent bg-accent-glow border border-border-accent px-2 py-0.5 rounded">
+              <span
+                className={`text-[11px] uppercase px-2 py-0.5 rounded border ${typeBadgeClasses(
+                  selected.opportunity_type
+                )}`}
+              >
                 {OPPORTUNITY_TYPE_LABELS[selected.opportunity_type] ||
                   selected.opportunity_type}
               </span>
               <StatusBadge
-                label={
-                  OPPORTUNITY_STATUS_LABELS[selected.status] || selected.status
-                }
+                label={OPPORTUNITY_STATUS_LABELS[selected.status] || selected.status}
                 color={statusColor(selected.status)}
               />
               {amountRange && (
                 <span className="font-mono text-[14px] font-medium text-accent">
                   {amountRange}
+                </span>
+              )}
+              {!amountRange && selected.amount_description && (
+                <span className="text-[13px] text-muted">
+                  {selected.amount_description}
                 </span>
               )}
             </div>
@@ -241,152 +342,241 @@ export function OpportunitiesView({
       >
         {selected && (
           <>
-            {/* Entity Details */}
-            <DetailSection title="Details">
-              <div className="space-y-3">
-                {selected.source_name && (
-                  <div>
-                    <p className={`${labelClass} mb-0.5`}>Source</p>
-                    <p className="text-[13px] text-text">
+            {/* Priority 5: no "Details" heading — self-labelled fields */}
+            <div className="space-y-3 px-6 pt-2">
+              {selected.source_name && (
+                <div>
+                  <p className={`${labelClass} mb-0.5`}>Source</p>
+                  {selected.source_org_id ? (
+                    <p
+                      className="text-[13px] text-text cursor-pointer hover:text-accent transition-colors"
+                      onClick={() =>
+                        navigateTo(`/ecosystem-map?open=${selected.source_org_id}`)
+                      }
+                    >
                       {selected.source_name}
                     </p>
-                  </div>
-                )}
-                {selected.deadline && (
-                  <div>
-                    <p className={`${labelClass} mb-0.5`}>Deadline</p>
-                    <div className="flex items-center gap-2">
-                      <p className="text-[13px] text-text">
-                        {formatDate(selected.deadline)}
-                      </p>
-                      <DaysRemaining deadline={selected.deadline} />
-                    </div>
-                    {selected.deadline_description && (
-                      <p className="text-[12px] text-muted mt-0.5">
-                        {selected.deadline_description}
-                      </p>
-                    )}
-                  </div>
-                )}
-                {selected.description && (
-                  <div>
-                    <p className={`${labelClass} mb-0.5`}>Description</p>
-                    <p className="text-[13px] text-text leading-relaxed">
-                      {selected.description}
+                  ) : (
+                    <p className="text-[13px] text-text">{selected.source_name}</p>
+                  )}
+                </div>
+              )}
+              {selected.deadline && (
+                <div>
+                  <p className={`${labelClass} mb-0.5`}>Deadline</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-[13px] text-text">
+                      {formatDate(selected.deadline)}
                     </p>
+                    <DaysRemaining deadline={selected.deadline} />
                   </div>
-                )}
-                {selected.eligibility && (
-                  <div>
-                    <p className={`${labelClass} mb-0.5`}>Eligibility</p>
-                    <p className="text-[13px] text-text leading-relaxed">
-                      {selected.eligibility}
+                  {selected.deadline_description && (
+                    <p className="text-[12px] text-muted mt-0.5">
+                      {selected.deadline_description}
                     </p>
-                  </div>
-                )}
-                {selected.amount_description && (
-                  <div>
-                    <p className={`${labelClass} mb-0.5`}>Amount Description</p>
-                    <p className="text-[13px] text-text leading-relaxed">
+                  )}
+                </div>
+              )}
+              {selected.description && (
+                <div>
+                  <p className={`${labelClass} mb-0.5`}>Description</p>
+                  <p className="text-[13px] text-text leading-relaxed">
+                    {selected.description}
+                  </p>
+                </div>
+              )}
+              {selected.eligibility && (
+                <div>
+                  <p className={`${labelClass} mb-0.5`}>Eligibility</p>
+                  <p className="text-[13px] text-text leading-relaxed">
+                    {selected.eligibility}
+                  </p>
+                </div>
+              )}
+              {(amountRange || selected.amount_description) && (
+                <div>
+                  <p className={`${labelClass} mb-0.5`}>Amount</p>
+                  {amountRange && (
+                    <p className="text-[13px] text-text font-mono">{amountRange}</p>
+                  )}
+                  {selected.amount_description && (
+                    <p className="text-[12px] text-muted mt-0.5">
                       {selected.amount_description}
                     </p>
-                  </div>
-                )}
-              </div>
-            </DetailSection>
+                  )}
+                </div>
+              )}
+            </div>
 
-            {/* Application */}
-            <DetailSection title="Application">
-              <div className="space-y-3">
-                {selected.application_url && (
-                  <div>
-                    <p className={`${labelClass} mb-0.5`}>Application URL</p>
+            {/* Priority 4: Application — only if content exists */}
+            {hasApplicationInfo && (
+              <DetailSection title="Application">
+                <div className="space-y-3">
+                  {selected.application_url && (
                     <a
                       href={selected.application_url}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-[13px] text-accent hover:underline break-all"
                     >
-                      {selected.application_url}
+                      Apply here &rarr;
                     </a>
-                  </div>
-                )}
-                {selected.contact_email && (
-                  <div>
-                    <p className={`${labelClass} mb-0.5`}>Contact Email</p>
-                    <a
-                      href={`mailto:${selected.contact_email}`}
-                      className="text-[13px] text-accent hover:underline"
-                    >
-                      {selected.contact_email}
-                    </a>
-                  </div>
-                )}
-                {!selected.application_url && !selected.contact_email && (
-                  <p className="text-[12px] text-dim">
-                    No application information available.
-                  </p>
-                )}
-              </div>
-            </DetailSection>
+                  )}
+                  {selected.contact_email && (
+                    <div>
+                      <p className={`${labelClass} mb-0.5`}>Contact</p>
+                      <a
+                        href={`mailto:${selected.contact_email}`}
+                        className="text-[13px] text-accent hover:underline"
+                      >
+                        {selected.contact_email}
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </DetailSection>
+            )}
 
-            {/* Award (only if awarded) */}
+            {/* Award */}
             {(selected.awarded_to || selected.awarded_investment_id) && (
               <DetailSection title="Award">
                 <div className="space-y-3">
                   {selected.awarded_to && (
                     <div>
                       <p className={`${labelClass} mb-0.5`}>Awarded To</p>
-                      <p className="text-[13px] text-text">
-                        {selected.awarded_to}
-                      </p>
+                      <p className="text-[13px] text-text">{selected.awarded_to}</p>
                     </div>
                   )}
                   {selected.awarded_investment_id &&
                     investmentMap[selected.awarded_investment_id] && (
                       <div>
                         <p className={`${labelClass} mb-0.5`}>
-                          Linked Investment
+                          This opportunity became
                         </p>
-                        <p className="text-[13px] text-accent">
-                          {
+                        <InlineRefCard
+                          title={
                             investmentMap[selected.awarded_investment_id]
                               .initiative_name
                           }
-                        </p>
+                          subtitle={`${investmentMap[selected.awarded_investment_id].source_name || "\u2014"} \u00b7 ${formatAmountShort(investmentMap[selected.awarded_investment_id].amount)} \u00b7 ${investmentMap[selected.awarded_investment_id].status}`}
+                          accentColor="gold"
+                          onClick={() =>
+                            navigateTo(
+                              `/investments?open=${selected.awarded_investment_id}`
+                            )
+                          }
+                        />
                       </div>
                     )}
                 </div>
               </DetailSection>
             )}
 
-            {/* Across the Toolkit */}
-            {(selected.source_name ||
-              (selected.awarded_investment_id &&
-                investmentMap[selected.awarded_investment_id])) && (
-              <DetailSection title="Across the Toolkit">
-                <div className="space-y-2">
-                  {selected.source_name && (
-                    <InlineRefCard
-                      title={selected.source_name}
-                      subtitle="Source organization"
-                      accentColor="green"
-                    />
-                  )}
-                  {selected.awarded_investment_id &&
-                    investmentMap[selected.awarded_investment_id] && (
-                      <InlineRefCard
-                        title={
-                          investmentMap[selected.awarded_investment_id]
-                            .initiative_name
-                        }
-                        subtitle="Linked investment"
-                        accentColor="gold"
-                      />
+            {/* Priority 6: Enriched Across the Toolkit */}
+            {(() => {
+              const orgId = selected.source_org_id;
+              const orgName = selected.source_name;
+              const orgInvs = orgId
+                ? (investmentsByOrg[orgId] || []).slice(0, 5)
+                : [];
+              const otherOpps = orgId
+                ? (oppsByOrg[orgId] || []).filter(
+                    (o) =>
+                      o.id !== selected.id &&
+                      (o.status === "open" || o.status === "closing_soon")
+                  )
+                : [];
+              const awardedInv = selected.awarded_investment_id
+                ? investmentMap[selected.awarded_investment_id]
+                : null;
+
+              const hasContent =
+                orgName || otherOpps.length > 0 || orgInvs.length > 0 || awardedInv;
+              if (!hasContent) return null;
+
+              return (
+                <DetailSection
+                  title="Across the Toolkit"
+                  subtitle="Connected data from other tools"
+                >
+                  <div className="space-y-5">
+                    {orgName && (
+                      <div>
+                        <p className={`${labelClass} mb-2`}>Source Organization</p>
+                        <InlineRefCard
+                          title={orgName}
+                          subtitle="Organization"
+                          accentColor="gold"
+                          onClick={
+                            orgId
+                              ? () => navigateTo(`/ecosystem-map?open=${orgId}`)
+                              : undefined
+                          }
+                        />
+                      </div>
                     )}
-                </div>
-              </DetailSection>
-            )}
+
+                    {otherOpps.length > 0 && (
+                      <div>
+                        <p className={`${labelClass} mb-2`}>Also from {orgName}</p>
+                        <div className="space-y-2">
+                          {otherOpps.map((o) => (
+                            <InlineRefCard
+                              key={o.id}
+                              title={o.title}
+                              subtitle={`${OPPORTUNITY_STATUS_LABELS[o.status] || o.status}${
+                                o.deadline
+                                  ? ` \u00b7 Due ${new Date(o.deadline).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+                                  : ""
+                              }`}
+                              accentColor="green"
+                              onClick={() => setSelectedId(o.id)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {orgInvs.length > 0 && (
+                      <div>
+                        <p className={`${labelClass} mb-2`}>
+                          What {orgName} has invested
+                        </p>
+                        <div className="space-y-2">
+                          {orgInvs.map((inv) => (
+                            <InlineRefCard
+                              key={inv.id}
+                              title={inv.initiative_name}
+                              subtitle={`${formatAmountShort(inv.amount)} \u00b7 ${COMPOUNDING_LABELS[inv.compounding] || inv.compounding}`}
+                              accentColor="gold"
+                              onClick={() =>
+                                navigateTo(`/investments?open=${inv.id}`)
+                              }
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {awardedInv && (
+                      <div>
+                        <p className={`${labelClass} mb-2`}>
+                          This opportunity became
+                        </p>
+                        <InlineRefCard
+                          title={awardedInv.initiative_name}
+                          subtitle={`${awardedInv.source_name || "\u2014"} \u00b7 ${formatAmountShort(awardedInv.amount)} \u00b7 ${awardedInv.status}`}
+                          accentColor="gold"
+                          onClick={() =>
+                            navigateTo(`/investments?open=${awardedInv.id}`)
+                          }
+                        />
+                      </div>
+                    )}
+                  </div>
+                </DetailSection>
+              );
+            })()}
 
             {/* Record */}
             <DetailSection title="Record">
@@ -401,10 +591,9 @@ export function OpportunitiesView({
                 {selected.submitted_by && (
                   <p>Submitted by: {selected.submitted_by}</p>
                 )}
-                <p>
-                  Submitted externally:{" "}
-                  {selected.submitted_externally ? "Yes" : "No"}
-                </p>
+                {selected.submitted_externally && (
+                  <p>Submitted externally: Yes</p>
+                )}
               </div>
             </DetailSection>
           </>
@@ -420,41 +609,45 @@ function OpportunityCard({
   opportunity,
   selected,
   onClick,
+  onOrgClick,
 }: {
   opportunity: Opportunity;
   selected: boolean;
   onClick: () => void;
+  onOrgClick?: () => void;
 }) {
-  const amount = formatAmountRange(
-    opportunity.amount_min,
-    opportunity.amount_max
-  );
+  const amount = formatAmountRange(opportunity.amount_min, opportunity.amount_max);
 
   return (
     <ListCard onClick={onClick} selected={selected}>
-      {/* Row 1: Type + Status badges (left) | Amount (right) */}
+      {/* Row 1: Type + Status (left) | Amount (right) */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] uppercase text-accent bg-accent-glow border border-border-accent px-2 py-0.5 rounded">
+          <span
+            className={`text-[11px] uppercase px-2 py-0.5 rounded border ${typeBadgeClasses(
+              opportunity.opportunity_type
+            )}`}
+          >
             {OPPORTUNITY_TYPE_LABELS[opportunity.opportunity_type] ||
               opportunity.opportunity_type}
           </span>
           <StatusBadge
-            label={
-              OPPORTUNITY_STATUS_LABELS[opportunity.status] ||
-              opportunity.status
-            }
+            label={OPPORTUNITY_STATUS_LABELS[opportunity.status] || opportunity.status}
             color={statusColor(opportunity.status)}
           />
         </div>
-        {amount && (
+        {amount ? (
           <span className="font-mono text-[16px] font-semibold text-text shrink-0">
             {amount}
           </span>
-        )}
+        ) : opportunity.amount_description ? (
+          <span className="text-[13px] text-muted shrink-0">
+            {opportunity.amount_description}
+          </span>
+        ) : null}
       </div>
 
-      {/* Row 2: Deadline + countdown (right-aligned) */}
+      {/* Row 2: Deadline */}
       {opportunity.deadline && (
         <div className="flex justify-end mt-1">
           <DeadlineCompact deadline={opportunity.deadline} />
@@ -466,18 +659,40 @@ function OpportunityCard({
         {opportunity.title}
       </h3>
 
-      {/* Description preview — 2-line max */}
+      {/* Priority 2: Source org — clickable if org link exists */}
+      {opportunity.source_name && (
+        <p
+          className={`text-[13px] text-muted mt-0.5${
+            onOrgClick ? " cursor-pointer hover:text-accent transition-colors" : ""
+          }`}
+          onClick={
+            onOrgClick
+              ? (e) => {
+                  e.stopPropagation();
+                  onOrgClick();
+                }
+              : undefined
+          }
+        >
+          {opportunity.source_name}
+        </p>
+      )}
+
+      {/* Description — 2-line max */}
       {opportunity.description && (
         <p className="text-[13px] text-muted mt-1.5 leading-relaxed line-clamp-2">
           {opportunity.description}
         </p>
       )}
 
-      {/* Eligibility — always visible */}
+      {/* Priority 8: Eligibility — border-top separator */}
       {opportunity.eligibility && (
-        <p className="text-[12px] text-dim mt-2">
-          Eligibility: {opportunity.eligibility}
-        </p>
+        <div className="mt-3 pt-2 border-t border-border">
+          <p className="text-[12px] text-dim">
+            <span className="font-semibold text-muted">Eligibility:</span>{" "}
+            {opportunity.eligibility}
+          </p>
+        </div>
       )}
     </ListCard>
   );

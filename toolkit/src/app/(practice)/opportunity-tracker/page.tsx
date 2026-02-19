@@ -7,7 +7,7 @@ import type { Opportunity, Investment, Organization } from "@/lib/supabase/types
 const NWA_ECOSYSTEM_ID = "a0000000-0000-0000-0000-000000000001";
 
 export const metadata = {
-  title: "Opportunities — Cultural Architecture Toolkit",
+  title: "Opportunity Tracker — Cultural Architecture Toolkit",
 };
 
 export default async function OpportunitiesPage() {
@@ -21,7 +21,7 @@ export default async function OpportunitiesPage() {
       .order("deadline", { ascending: true }),
     supabase
       .from("investments")
-      .select("id, initiative_name")
+      .select("id, source_org_id, source_name, initiative_name, amount, status, compounding")
       .eq("ecosystem_id", NWA_ECOSYSTEM_ID),
     supabase
       .from("organizations")
@@ -37,13 +37,38 @@ export default async function OpportunitiesPage() {
     ...opp,
     source_name: opp.source_name || (opp.source_org_id ? orgNameMap.get(opp.source_org_id) : null) || null,
   }));
-  const investments = (investmentData as Pick<Investment, "id" | "initiative_name">[]) || [];
 
-  // Build plain object map (serializable for client)
-  const investmentMap: Record<string, { id: string; initiative_name: string }> = {};
-  investments.forEach((i) => {
-    investmentMap[i.id] = { id: i.id, initiative_name: i.initiative_name };
-  });
+  type InvSummary = Pick<Investment, "id" | "source_org_id" | "source_name" | "initiative_name" | "amount" | "status" | "compounding">;
+  const investments = (investmentData as InvSummary[]) || [];
+
+  // Build investment map for awarded_investment_id lookups
+  const investmentMap: Record<string, InvSummary> = {};
+  for (const i of investments) {
+    investmentMap[i.id] = i;
+  }
+
+  // Build investments-by-org for "What [Org] has invested" section
+  const investmentsByOrg: Record<string, InvSummary[]> = {};
+  for (const inv of investments) {
+    if (inv.source_org_id) {
+      if (!investmentsByOrg[inv.source_org_id]) investmentsByOrg[inv.source_org_id] = [];
+      investmentsByOrg[inv.source_org_id].push(inv);
+    }
+  }
+
+  // Build opportunities-by-org for "Also from [Org]" section
+  const oppsByOrg: Record<string, Array<{ id: string; title: string; status: string; deadline: string | null }>> = {};
+  for (const opp of opportunities) {
+    if (opp.source_org_id) {
+      if (!oppsByOrg[opp.source_org_id]) oppsByOrg[opp.source_org_id] = [];
+      oppsByOrg[opp.source_org_id].push({
+        id: opp.id,
+        title: opp.title,
+        status: opp.status,
+        deadline: opp.deadline,
+      });
+    }
+  }
 
   return (
     <div className="space-y-section">
@@ -58,7 +83,12 @@ export default async function OpportunitiesPage() {
           description="Opportunities will appear here once added."
         />
       ) : (
-        <OpportunitiesView opportunities={opportunities} investmentMap={investmentMap} />
+        <OpportunitiesView
+          opportunities={opportunities}
+          investmentMap={investmentMap}
+          investmentsByOrg={investmentsByOrg}
+          oppsByOrg={oppsByOrg}
+        />
       )}
     </div>
   );

@@ -44,7 +44,7 @@ const NAV_GROUPS: NavGroup[] = [
         icon: "archive",
       },
       {
-        href: "/opportunities",
+        href: "/opportunity-tracker",
         label: "Opportunities",
         verb: "What\u2019s available now",
         icon: "compass",
