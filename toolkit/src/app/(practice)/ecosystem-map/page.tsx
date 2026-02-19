@@ -2,7 +2,15 @@ import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EcosystemMapView } from "@/components/practice/views/EcosystemMapView";
-import type { Organization, Practitioner, Investment, Decision, Opportunity } from "@/lib/supabase/types";
+import type {
+  Organization,
+  Practitioner,
+  Investment,
+  Decision,
+  Opportunity,
+  Narrative,
+  Contact,
+} from "@/lib/supabase/types";
 
 const NWA_ECOSYSTEM_ID = "a0000000-0000-0000-0000-000000000001";
 
@@ -19,38 +27,66 @@ export default async function EcosystemMapPage() {
     { data: investments },
     { data: decisions },
     { data: opportunities },
+    { data: narratives },
+    { data: contacts },
   ] = await Promise.all([
     supabase.from("organizations").select("*").eq("ecosystem_id", NWA_ECOSYSTEM_ID).order("name"),
     supabase.from("practitioners").select("*").eq("ecosystem_id", NWA_ECOSYSTEM_ID).order("name"),
-    supabase.from("investments").select("id, source_org_id, status").eq("ecosystem_id", NWA_ECOSYSTEM_ID),
-    supabase.from("decisions").select("id, stakeholder_org_id, status").eq("ecosystem_id", NWA_ECOSYSTEM_ID),
-    supabase.from("opportunities").select("id, source_org_id, status").eq("ecosystem_id", NWA_ECOSYSTEM_ID),
+    supabase.from("investments").select("id, source_org_id, initiative_name, amount, compounding, status").eq("ecosystem_id", NWA_ECOSYSTEM_ID),
+    supabase.from("decisions").select("id, stakeholder_org_id, decision_title, status, locks_date").eq("ecosystem_id", NWA_ECOSYSTEM_ID),
+    supabase.from("opportunities").select("id, source_org_id, title, amount_min, amount_max, deadline, status").eq("ecosystem_id", NWA_ECOSYSTEM_ID),
+    supabase.from("narratives").select("id, source_org_id, source_name, gap").eq("ecosystem_id", NWA_ECOSYSTEM_ID),
+    supabase.from("contacts").select("*").order("name"),
   ]);
 
   const organizations = (orgs as Organization[]) || [];
   const practitionerList = (practitioners as Practitioner[]) || [];
-  const investmentList = (investments as Pick<Investment, "id" | "source_org_id" | "status">[]) || [];
-  const decisionList = (decisions as Pick<Decision, "id" | "stakeholder_org_id" | "status">[]) || [];
-  const opportunityList = (opportunities as Pick<Opportunity, "id" | "source_org_id" | "status">[]) || [];
+  const investmentList = (investments as Pick<Investment, "id" | "source_org_id" | "initiative_name" | "amount" | "compounding" | "status">[]) || [];
+  const decisionList = (decisions as Pick<Decision, "id" | "stakeholder_org_id" | "decision_title" | "status" | "locks_date">[]) || [];
+  const opportunityList = (opportunities as Pick<Opportunity, "id" | "source_org_id" | "title" | "amount_min" | "amount_max" | "deadline" | "status">[]) || [];
+  const narrativeList = (narratives as Pick<Narrative, "id" | "source_org_id" | "source_name" | "gap">[]) || [];
+  const contactList = (contacts as Contact[]) || [];
 
-  // Build connection counts per org as a plain object (serializable)
-  const orgConnectionCounts: Record<string, { investments: number; decisions: number; opportunities: number }> = {};
+  // Build per-org data for cards and detail panel
+  type OrgInvestment = (typeof investmentList)[number];
+  type OrgDecision = (typeof decisionList)[number];
+  type OrgOpportunity = (typeof opportunityList)[number];
+  type OrgNarrative = (typeof narrativeList)[number];
+
+  const orgData: Record<string, {
+    investments: OrgInvestment[];
+    decisions: OrgDecision[];
+    opportunities: OrgOpportunity[];
+    narratives: OrgNarrative[];
+    contacts: Contact[];
+  }> = {};
+
   organizations.forEach((org) => {
-    orgConnectionCounts[org.id] = { investments: 0, decisions: 0, opportunities: 0 };
+    orgData[org.id] = { investments: [], decisions: [], opportunities: [], narratives: [], contacts: [] };
   });
   investmentList.forEach((inv) => {
-    if (inv.source_org_id && orgConnectionCounts[inv.source_org_id]) {
-      orgConnectionCounts[inv.source_org_id].investments++;
+    if (inv.source_org_id && orgData[inv.source_org_id]) {
+      orgData[inv.source_org_id].investments.push(inv);
     }
   });
   decisionList.forEach((dec) => {
-    if (dec.stakeholder_org_id && orgConnectionCounts[dec.stakeholder_org_id]) {
-      orgConnectionCounts[dec.stakeholder_org_id].decisions++;
+    if (dec.stakeholder_org_id && orgData[dec.stakeholder_org_id]) {
+      orgData[dec.stakeholder_org_id].decisions.push(dec);
     }
   });
   opportunityList.forEach((opp) => {
-    if (opp.source_org_id && orgConnectionCounts[opp.source_org_id]) {
-      orgConnectionCounts[opp.source_org_id].opportunities++;
+    if (opp.source_org_id && orgData[opp.source_org_id]) {
+      orgData[opp.source_org_id].opportunities.push(opp);
+    }
+  });
+  narrativeList.forEach((n) => {
+    if (n.source_org_id && orgData[n.source_org_id]) {
+      orgData[n.source_org_id].narratives.push(n);
+    }
+  });
+  contactList.forEach((c) => {
+    if (orgData[c.organization_id]) {
+      orgData[c.organization_id].contacts.push(c);
     }
   });
 
@@ -79,7 +115,7 @@ export default async function EcosystemMapPage() {
       <EcosystemMapView
         organizations={organizations}
         practitioners={practitionerList}
-        orgConnectionCounts={orgConnectionCounts}
+        orgData={orgData}
       />
     </div>
   );

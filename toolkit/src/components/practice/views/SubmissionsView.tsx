@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { DetailPanel, DetailSection } from "@/components/ui/DetailPanel";
 import { StatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -54,6 +55,12 @@ interface SubmissionsViewProps {
 
 export function SubmissionsView({ submissions }: SubmissionsViewProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (openId) setSelectedId(openId);
+  }, [searchParams]);
 
   const submissionMap = new Map(submissions.map((s) => [s.id, s]));
   const selected = selectedId ? submissionMap.get(selectedId) : null;

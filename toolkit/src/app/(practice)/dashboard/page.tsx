@@ -17,7 +17,7 @@ import { createClient } from "@/lib/supabase/server";
 const NWA_ECOSYSTEM_ID = "a0000000-0000-0000-0000-000000000001";
 
 export const metadata = {
-  title: "Dashboard — Cultural Architecture Toolkit",
+  title: "Northwest Arkansas — Cultural Architecture Toolkit",
 };
 
 export default async function DashboardPage() {
@@ -65,7 +65,7 @@ export default async function DashboardPage() {
   );
 
   // Entity type → page path mapping for clickable activity rows
-  function entityHref(entityType: string): string {
+  function entityHref(entityType: string, entityId: string): string {
     const map: Record<string, string> = {
       organization: "/ecosystem-map",
       investment: "/investments",
@@ -76,7 +76,8 @@ export default async function DashboardPage() {
       output: "/outputs",
       practitioner: "/ecosystem-map",
     };
-    return map[entityType] || "/dashboard";
+    const base = map[entityType] || "/dashboard";
+    return `${base}?open=${entityId}`;
   }
 
   function entityTypeLabel(type: string): string {
@@ -111,8 +112,8 @@ export default async function DashboardPage() {
   return (
     <div>
       <PageHeader
-        title="Dashboard"
-        subtitle="The state of the NWA cultural ecosystem at a glance."
+        title="Northwest Arkansas"
+        subtitle="Current state of the cultural ecosystem."
       />
 
       {/* ── Section 1: Ecosystem Headline ─────────────────── */}
@@ -151,7 +152,7 @@ export default async function DashboardPage() {
             {highGapNarratives.map((n) => (
               <Link
                 key={n.id}
-                href="/narratives"
+                href={`/narratives?open=${n.id}`}
                 className="block bg-surface-card border border-border rounded-card hover:border-border-medium transition-colors"
               >
                 <div className="flex">
@@ -214,7 +215,7 @@ export default async function DashboardPage() {
             {activityWithNames.map((entry, i) => (
               <Link
                 key={entry.id}
-                href={entityHref(entry.entity_type)}
+                href={entityHref(entry.entity_type, entry.entity_id)}
                 className={`flex items-center justify-between py-2.5 px-3 rounded hover:bg-surface-elevated/50 transition-colors ${
                   i < activityWithNames.length - 1
                     ? "border-b border-border"

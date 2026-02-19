@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { CardList, ListCard } from "@/components/ui/CardGrid";
 import { DetailPanel, DetailSection } from "@/components/ui/DetailPanel";
 import { formatDate } from "@/lib/utils/formatting";
@@ -15,6 +16,13 @@ const labelClass =
 
 export function PrecedentsView({ precedents }: PrecedentsViewProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (openId) setSelectedId(openId);
+  }, [searchParams]);
+
   const precedentMap = new Map(precedents.map((p) => [p.id, p]));
   const selected = selectedId ? precedentMap.get(selectedId) : null;
 

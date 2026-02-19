@@ -45,7 +45,7 @@ export function DecisionsForming({ decisions, outputMap }: DecisionsFormingProps
         return (
           <Link
             key={d.id}
-            href="/decisions"
+            href={`/decisions?open=${d.id}`}
             className="block bg-surface-card border border-border rounded-card px-5 py-4 hover:border-border-medium transition-colors"
           >
             {/* Row 1: status · org · countdown */}

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { CardList, ListCard } from "@/components/ui/CardGrid";
 import { DetailPanel, DetailSection, InlineRefCard } from "@/components/ui/DetailPanel";
 import { StatusBadge } from "@/components/ui/Badge";
@@ -132,6 +133,12 @@ interface DecisionsViewProps {
 
 export function DecisionsView({ decisions, outputsByDecision }: DecisionsViewProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (openId) setSelectedId(openId);
+  }, [searchParams]);
   const decisionMap = new Map(decisions.map((d) => [d.id, d]));
   const selected = selectedId ? decisionMap.get(selectedId) : null;
 

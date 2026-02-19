@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { CardList, ListCard } from "@/components/ui/CardGrid";
 import {
   DetailPanel,
@@ -97,6 +98,12 @@ export function OpportunitiesView({
   investmentMap,
 }: OpportunitiesViewProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (openId) setSelectedId(openId);
+  }, [searchParams]);
 
   const opportunityLookup = new Map(opportunities.map((o) => [o.id, o]));
   const selected = selectedId ? opportunityLookup.get(selectedId) : null;
