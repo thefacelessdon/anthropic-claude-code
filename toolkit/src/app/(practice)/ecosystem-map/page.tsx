@@ -44,8 +44,14 @@ export default async function EcosystemMapPage() {
   const investmentList = (investments as Pick<Investment, "id" | "source_org_id" | "initiative_name" | "amount" | "compounding" | "status">[]) || [];
   const decisionList = (decisions as Pick<Decision, "id" | "stakeholder_org_id" | "decision_title" | "status" | "locks_date">[]) || [];
   const opportunityList = (opportunities as Pick<Opportunity, "id" | "source_org_id" | "title" | "amount_min" | "amount_max" | "deadline" | "status">[]) || [];
-  const narrativeList = (narratives as Pick<Narrative, "id" | "source_org_id" | "source_name" | "gap">[]) || [];
   const contactList = (contacts as Contact[]) || [];
+
+  // Resolve narrative source_name from org when source_name is null
+  const orgNameMap = new Map(organizations.map((o) => [o.id, o.name]));
+  const narrativeList = ((narratives as Pick<Narrative, "id" | "source_org_id" | "source_name" | "gap">[]) || []).map((n) => ({
+    ...n,
+    source_name: n.source_name || (n.source_org_id ? orgNameMap.get(n.source_org_id) : null) || null,
+  }));
 
   // Build per-org data for cards and detail panel
   type OrgInvestment = (typeof investmentList)[number];

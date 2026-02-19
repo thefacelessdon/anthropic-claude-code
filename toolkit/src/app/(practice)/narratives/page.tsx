@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { NarrativesView } from "@/components/practice/views/NarrativesView";
-import type { Narrative } from "@/lib/supabase/types";
+import type { Narrative, Organization } from "@/lib/supabase/types";
 
 const NWA_ECOSYSTEM_ID = "a0000000-0000-0000-0000-000000000001";
 
@@ -13,13 +13,26 @@ export const metadata = {
 export default async function NarrativesPage() {
   const supabase = createClient();
 
-  const { data } = await supabase
-    .from("narratives")
-    .select("*")
-    .eq("ecosystem_id", NWA_ECOSYSTEM_ID)
-    .order("date", { ascending: false });
+  const [{ data }, { data: orgData }] = await Promise.all([
+    supabase
+      .from("narratives")
+      .select("*")
+      .eq("ecosystem_id", NWA_ECOSYSTEM_ID)
+      .order("date", { ascending: false }),
+    supabase
+      .from("organizations")
+      .select("id, name")
+      .eq("ecosystem_id", NWA_ECOSYSTEM_ID),
+  ]);
 
-  const narratives = (data as Narrative[]) || [];
+  // Resolve source_name from source_org_id when source_name is null
+  const orgNameMap = new Map(
+    ((orgData as Pick<Organization, "id" | "name">[]) || []).map((o) => [o.id, o.name])
+  );
+  const narratives: Narrative[] = ((data as Narrative[]) || []).map((n) => ({
+    ...n,
+    source_name: n.source_name || (n.source_org_id ? orgNameMap.get(n.source_org_id) : null) || null,
+  }));
 
   const highGap = narratives.filter((n) => n.gap === "high").length;
   const mediumGap = narratives.filter((n) => n.gap === "medium").length;

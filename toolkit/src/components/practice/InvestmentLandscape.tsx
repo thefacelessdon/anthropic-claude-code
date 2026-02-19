@@ -38,6 +38,16 @@ interface DisciplineRow {
   atRisk: number;
 }
 
+interface CrossCutting {
+  label: string;
+  amount: number;
+}
+
+interface DisciplineResult {
+  rows: DisciplineRow[];
+  crossCutting: CrossCutting[];
+}
+
 interface InvestmentLandscapeProps {
   investments: Investment[];
   practitioners: Practitioner[];
@@ -49,18 +59,44 @@ interface InvestmentLandscapeProps {
 
 // ─── Constants ──────────────────────────────────────
 
-const CATEGORY_TO_DISCIPLINE: Record<string, string> = {
+// Map practitioner disciplines (from DB) to broad display categories
+const DISCIPLINE_TO_CATEGORY: Record<string, string> = {
+  "Painting / Installation": "Visual Arts",
+  "Ceramics / Sculpture": "Visual Arts",
+  "Photography / Media": "Visual Arts",
+  "Murals / Public Art": "Visual Arts",
+  "Production / Performance": "Performing Arts",
+  "Music Production / Audio": "Performing Arts",
+  "Acting / Directing": "Performing Arts",
+  "Dance / Movement": "Performing Arts",
+  "Graphic / Brand Design": "Design",
+  "Architecture / Spatial Design": "Design",
+  "Documentary / Commercial": "Film",
+  "Documentary / Commercial Film": "Film",
+  "Literary Arts": "Literary",
+};
+
+// Map investment categories (from DB) to the same broad display categories
+const INVESTMENT_CAT_TO_DISPLAY: Record<string, string> = {
   direct_artist_support: "Visual Arts",
   public_art: "Visual Arts",
   artist_development: "Visual Arts",
-  programming: "Performance",
-  infrastructure: "Infrastructure",
+  programming: "Performing Arts",
+  sector_development: "Performing Arts",
+  // Cross-cutting categories — tracked separately, not mapped to a discipline
+};
+
+// Cross-cutting investment categories that don't map to a single discipline
+const CROSS_CUTTING_CATEGORIES: Record<string, string> = {
   strategic_planning: "Strategic Planning",
-  education_training: "Education",
-  sector_development: "Sector Development",
+  education_training: "Education & Training",
+  infrastructure: "Infrastructure",
   institutional_capacity: "Institutional Capacity",
   communications: "Communications",
 };
+
+// Display order for discipline rows
+const DISCIPLINE_ORDER = ["Visual Arts", "Performing Arts", "Film", "Design", "Literary"];
 
 // ─── Data Aggregation ───────────────────────────────
 
@@ -106,55 +142,57 @@ function aggregateCompoundingBySource(investments: Investment[]): SourceCompound
     .map(([name, d]) => ({ name, ...d }));
 }
 
-function buildDisciplineData(investments: Investment[], practitioners: Practitioner[]): DisciplineRow[] {
-  // Practitioner counts by discipline
-  const practMap: Record<string, { count: number; atRisk: number }> = {};
+function buildDisciplineData(investments: Investment[], practitioners: Practitioner[]): DisciplineResult {
+  // 1. Count practitioners by broad display category
+  const practByCat: Record<string, { count: number; atRisk: number }> = {};
   practitioners.forEach((p) => {
-    const disc = p.discipline || "Other";
-    if (!practMap[disc]) practMap[disc] = { count: 0, atRisk: 0 };
-    practMap[disc].count++;
+    const rawDisc = p.discipline || "Other";
+    const cat = DISCIPLINE_TO_CATEGORY[rawDisc] || "Other";
+    if (!practByCat[cat]) practByCat[cat] = { count: 0, atRisk: 0 };
+    practByCat[cat].count++;
     if (
       p.risk_factors &&
       (p.risk_factors.toLowerCase().includes("leav") ||
-        p.risk_factors.toLowerCase().includes("relocat"))
+        p.risk_factors.toLowerCase().includes("relocat") ||
+        p.risk_factors.toLowerCase().includes("considering"))
     ) {
-      practMap[disc].atRisk++;
+      practByCat[cat].atRisk++;
     }
   });
 
-  // Investment amounts by category mapped to approximate discipline
-  // Use category as proxy since investments don't have a discipline field
-  const categoryToAmount: Record<string, number> = {};
+  // 2. Sum investments by broad display category (only discipline-mapped ones)
+  const investByCat: Record<string, number> = {};
+  const crossCuttingAmounts: Record<string, number> = {};
   investments.forEach((inv) => {
     const cat = inv.category || "uncategorized";
-    categoryToAmount[cat] = (categoryToAmount[cat] || 0) + (inv.amount || 0);
+    const amount = inv.amount || 0;
+    const displayCat = INVESTMENT_CAT_TO_DISPLAY[cat];
+    if (displayCat) {
+      investByCat[displayCat] = (investByCat[displayCat] || 0) + amount;
+    } else if (CROSS_CUTTING_CATEGORIES[cat]) {
+      const label = CROSS_CUTTING_CATEGORIES[cat];
+      crossCuttingAmounts[label] = (crossCuttingAmounts[label] || 0) + amount;
+    }
+    // uncategorized or unknown categories are silently excluded
   });
 
-  // Map categories to disciplines approximately
-  const categoryToDiscipline = CATEGORY_TO_DISCIPLINE;
-
-  // Build combined data from practitioner disciplines
-  const allDiscs = new Set([
-    ...Object.keys(practMap),
-    ...Object.values(categoryToDiscipline),
-  ]);
-
-  // Investment by mapped discipline
-  const investByDisc: Record<string, number> = {};
-  Object.entries(categoryToAmount).forEach(([cat, amount]) => {
-    const disc = categoryToDiscipline[cat] || "Other";
-    investByDisc[disc] = (investByDisc[disc] || 0) + amount;
-  });
-
-  return Array.from(allDiscs)
+  // 3. Build rows in specified order
+  const rows: DisciplineRow[] = DISCIPLINE_ORDER
     .map((name) => ({
       name,
-      investment: investByDisc[name] || 0,
-      practitionerCount: practMap[name]?.count || 0,
-      atRisk: practMap[name]?.atRisk || 0,
+      investment: investByCat[name] || 0,
+      practitionerCount: practByCat[name]?.count || 0,
+      atRisk: practByCat[name]?.atRisk || 0,
     }))
-    .filter((d) => d.investment > 0 || d.practitionerCount > 0)
-    .sort((a, b) => b.investment - a.investment);
+    .filter((d) => d.investment > 0 || d.practitionerCount > 0);
+
+  // 4. Cross-cutting totals
+  const crossCutting: CrossCutting[] = Object.entries(crossCuttingAmounts)
+    .filter(([, amount]) => amount > 0)
+    .sort(([, a], [, b]) => b - a)
+    .map(([label, amount]) => ({ label, amount }));
+
+  return { rows, crossCutting };
 }
 
 // ─── Formatters ─────────────────────────────────────
@@ -178,7 +216,7 @@ export function InvestmentLandscape({
   const bySource = aggregateBySource(investments);
   const byCategory = aggregateByCategory(investments);
   const compoundingBySource = aggregateCompoundingBySource(investments);
-  const disciplineData = buildDisciplineData(investments, practitioners);
+  const { rows: disciplineData, crossCutting } = buildDisciplineData(investments, practitioners);
 
   const maxInvestment = Math.max(...disciplineData.map((d) => d.investment), 1);
   const maxPractitioners = Math.max(...disciplineData.map((d) => d.practitionerCount), 1);
@@ -428,8 +466,8 @@ export function InvestmentLandscape({
                 <div
                   className="flex items-center gap-2 cursor-pointer group"
                   onClick={() => {
-                    // Find a category that maps to this discipline
-                    const catEntry = Object.entries(CATEGORY_TO_DISCIPLINE).find(
+                    // Find a category that maps to this display discipline
+                    const catEntry = Object.entries(INVESTMENT_CAT_TO_DISPLAY).find(
                       ([, disc]) => disc === d.name
                     );
                     if (catEntry) onFilterCategory(catEntry[0]);
@@ -483,6 +521,20 @@ export function InvestmentLandscape({
             allocation. Ceramics and literary arts receive no direct investment
             despite active practitioners in both fields.
           </p>
+
+          {/* Cross-cutting investment note */}
+          {crossCutting.length > 0 && (
+            <p className="text-[12px] text-dim mt-4 leading-relaxed">
+              Cross-cutting investment not shown above:{" "}
+              {crossCutting.map((c, i) => (
+                <span key={c.label}>
+                  {i > 0 && " · "}
+                  {c.label} ({formatShort(c.amount)})
+                </span>
+              ))}
+              . These investments serve the ecosystem broadly and don&rsquo;t map to a single discipline.
+            </p>
+          )}
         </div>
       )}
     </div>

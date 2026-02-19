@@ -94,7 +94,21 @@ export default async function InvestmentsPage() {
                 <span className="flex items-center gap-1.5">
                   <StatusDot color="green" />
                   <span className="font-mono text-sm font-medium text-text">{compounding.length}</span>
-                  <span className="text-[11px] text-muted">compounding</span>
+                  <span className="text-[11px] text-muted relative group/tip">
+                    compounding
+                    <button
+                      className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-dim text-[10px] text-dim ml-1 align-middle cursor-help"
+                      aria-label="What does compounding mean?"
+                    >
+                      ?
+                    </button>
+                    <span className="hidden group-hover/tip:block absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-80 px-4 py-3 bg-surface-card border border-border-medium rounded-md text-[13px] text-muted leading-relaxed z-50 shadow-lg">
+                      An investment is compounding when it creates conditions that make the next
+                      investment more effective &mdash; building institutional knowledge, strengthening
+                      networks, or creating infrastructure others can build on. Not compounding means
+                      the investment is isolated.
+                    </span>
+                  </span>
                 </span>
                 <span className="flex items-center gap-1.5">
                   <StatusDot color="red" />
@@ -138,18 +152,6 @@ export default async function InvestmentsPage() {
             )}
           </div>
         </div>
-      </div>
-
-      {/* Compounding explainer */}
-      <div className="bg-surface-inset border border-border rounded-card px-5 py-4">
-        <p className="text-[13px] text-muted leading-relaxed">
-          <span className="text-text font-medium">What does &ldquo;compounding&rdquo; mean?</span>{" "}
-          An investment is compounding when it creates conditions that make the next investment more effective &mdash;
-          building institutional knowledge, strengthening networks, or creating infrastructure others can build on.
-          <span className="text-status-green font-medium"> Compounding</span> means downstream value is accumulating.
-          <span className="text-status-red font-medium"> Not compounding</span> means the investment is isolated &mdash;
-          it didn&rsquo;t connect to or enable anything else.
-        </p>
       </div>
 
       {/* Investment cards — client component with grid + detail panel */}

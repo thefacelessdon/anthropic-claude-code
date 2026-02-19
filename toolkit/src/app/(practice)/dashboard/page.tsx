@@ -11,7 +11,7 @@ import {
 } from "@/lib/queries/stats";
 import { formatRelativeDate } from "@/lib/utils/formatting";
 import { GAP_LABELS } from "@/lib/utils/constants";
-import type { Narrative } from "@/lib/supabase/types";
+import type { Narrative, Organization } from "@/lib/supabase/types";
 import { createClient } from "@/lib/supabase/server";
 
 const NWA_ECOSYSTEM_ID = "a0000000-0000-0000-0000-000000000001";
@@ -23,7 +23,7 @@ export const metadata = {
 export default async function DashboardPage() {
   const supabase = createClient();
 
-  const [stats, decisions, activity, { data: narrativeData }] =
+  const [stats, decisions, activity, { data: narrativeData }, { data: orgData }] =
     await Promise.all([
       getEcosystemStats(),
       getFormingDecisions(),
@@ -36,9 +36,20 @@ export default async function DashboardPage() {
         .order("gap", { ascending: true }) // high before medium
         .order("date", { ascending: false })
         .limit(5),
+      supabase
+        .from("organizations")
+        .select("id, name")
+        .eq("ecosystem_id", NWA_ECOSYSTEM_ID),
     ]);
 
-  const highGapNarratives = (narrativeData as Narrative[]) || [];
+  // Resolve narrative source_name from source_org_id when source_name is null
+  const orgNameMap = new Map(
+    ((orgData as Pick<Organization, "id" | "name">[]) || []).map((o) => [o.id, o.name])
+  );
+  const highGapNarratives: Narrative[] = ((narrativeData as Narrative[]) || []).map((n) => ({
+    ...n,
+    source_name: n.source_name || (n.source_org_id ? orgNameMap.get(n.source_org_id) : null) || null,
+  }));
 
   // Resolve output titles for forming decisions
   const outputEntries = await Promise.all(

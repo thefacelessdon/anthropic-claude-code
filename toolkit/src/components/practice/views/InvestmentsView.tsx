@@ -208,12 +208,21 @@ export function InvestmentsView({ investments, practitioners }: InvestmentsViewP
           {filteredInvestments.map((inv) => {
             const buildsOn = inv.builds_on_id ? investmentMap.get(inv.builds_on_id) : null;
             const ledTo = inv.led_to_id ? investmentMap.get(inv.led_to_id) : null;
+            const children = childrenMap.get(inv.id) || [];
+
+            const accentBar =
+              inv.compounding === "compounding"
+                ? "bg-status-green"
+                : inv.compounding === "not_compounding"
+                  ? "bg-status-red"
+                  : "bg-status-blue";
 
             return (
               <ListCard
                 key={inv.id}
                 onClick={() => setSelectedId(inv.id)}
                 selected={selectedId === inv.id}
+                accentBar={accentBar}
               >
                 {/* Row 1: badges left, amount right — L-shaped scan */}
                 <div className="flex items-start justify-between gap-4">
@@ -258,14 +267,32 @@ export function InvestmentsView({ investments, practitioners }: InvestmentsViewP
                   </p>
                 )}
 
-                {/* Row 5: Chain link */}
-                {(buildsOn || ledTo) && (
-                  <p className="text-[12px] text-accent mt-2">
-                    {buildsOn && <>Builds on: {buildsOn.initiative_name}</>}
-                    {buildsOn && ledTo && " · "}
-                    {ledTo && <>Led to: {ledTo.initiative_name} →</>}
+                {/* Row 5: Chain links */}
+                {buildsOn && (
+                  <p
+                    className="text-[12px] text-accent mt-2 cursor-pointer hover:underline"
+                    onClick={(e) => { e.stopPropagation(); setSelectedId(buildsOn.id); }}
+                  >
+                    Builds on → {buildsOn.initiative_name}
                   </p>
                 )}
+                {ledTo && (
+                  <p
+                    className="text-[12px] text-accent mt-1 cursor-pointer hover:underline"
+                    onClick={(e) => { e.stopPropagation(); setSelectedId(ledTo.id); }}
+                  >
+                    Led to → {ledTo.initiative_name}
+                  </p>
+                )}
+                {children.filter((c) => c.id !== ledTo?.id).map((child) => (
+                  <p
+                    key={child.id}
+                    className="text-[12px] text-accent mt-1 cursor-pointer hover:underline"
+                    onClick={(e) => { e.stopPropagation(); setSelectedId(child.id); }}
+                  >
+                    Led to → {child.initiative_name}
+                  </p>
+                ))}
               </ListCard>
             );
           })}

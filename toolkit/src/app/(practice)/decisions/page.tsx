@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { DecisionsView } from "@/components/practice/views/DecisionsView";
-import type { Decision, Output } from "@/lib/supabase/types";
+import type { Decision, Output, Organization } from "@/lib/supabase/types";
 
 const NWA_ECOSYSTEM_ID = "a0000000-0000-0000-0000-000000000001";
 
@@ -13,7 +13,7 @@ export const metadata = {
 export default async function DecisionsPage() {
   const supabase = createClient();
 
-  const [{ data: decisionData }, { data: outputData }] = await Promise.all([
+  const [{ data: decisionData }, { data: outputData }, { data: orgData }] = await Promise.all([
     supabase
       .from("decisions")
       .select("*")
@@ -23,9 +23,20 @@ export default async function DecisionsPage() {
       .from("outputs")
       .select("id, title, triggered_by_decision_id, is_published")
       .eq("ecosystem_id", NWA_ECOSYSTEM_ID),
+    supabase
+      .from("organizations")
+      .select("id, name")
+      .eq("ecosystem_id", NWA_ECOSYSTEM_ID),
   ]);
 
-  const decisions = (decisionData as Decision[]) || [];
+  // Resolve stakeholder_name from stakeholder_org_id when stakeholder_name is null
+  const orgNameMap = new Map(
+    ((orgData as Pick<Organization, "id" | "name">[]) || []).map((o) => [o.id, o.name])
+  );
+  const decisions: Decision[] = ((decisionData as Decision[]) || []).map((d) => ({
+    ...d,
+    stakeholder_name: d.stakeholder_name || (d.stakeholder_org_id ? orgNameMap.get(d.stakeholder_org_id) : null) || null,
+  }));
   const outputs = (outputData as Pick<Output, "id" | "title" | "triggered_by_decision_id" | "is_published">[]) || [];
 
   // Build output lookup by decision ID as a plain object (serializable)
