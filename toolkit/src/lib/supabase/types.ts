@@ -261,6 +261,8 @@ export interface Output {
   delivered_at: string | null;
   delivered_to_contact: string | null;
   delivery_notes: string | null;
+  file_url: string | null;
+  file_type: string | null;
   created_at: string;
   updated_at: string;
 }

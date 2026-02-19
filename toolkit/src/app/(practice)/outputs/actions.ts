@@ -13,6 +13,8 @@ export async function createOutput(data: {
   triggered_by_decision_id?: string;
   target_stakeholder_id?: string;
   delivered_to_contact?: string;
+  file_url?: string;
+  file_type?: string;
 }) {
   const supabase = createClient();
   const row = {
@@ -24,6 +26,8 @@ export async function createOutput(data: {
     triggered_by_decision_id: data.triggered_by_decision_id || null,
     target_stakeholder_id: data.target_stakeholder_id || null,
     delivered_to_contact: data.delivered_to_contact || null,
+    file_url: data.file_url || null,
+    file_type: data.file_type || null,
     is_published: false,
     delivery_status: "draft" as DeliveryStatus,
   };
@@ -50,6 +54,8 @@ export async function updateOutput(
     triggered_by_decision_id?: string | null;
     target_stakeholder_id?: string | null;
     delivered_to_contact?: string | null;
+    file_url?: string | null;
+    file_type?: string | null;
   }
 ) {
   const supabase = createClient();
@@ -62,6 +68,8 @@ export async function updateOutput(
   if (data.triggered_by_decision_id !== undefined) update.triggered_by_decision_id = data.triggered_by_decision_id;
   if (data.target_stakeholder_id !== undefined) update.target_stakeholder_id = data.target_stakeholder_id;
   if (data.delivered_to_contact !== undefined) update.delivered_to_contact = data.delivered_to_contact;
+  if (data.file_url !== undefined) update.file_url = data.file_url;
+  if (data.file_type !== undefined) update.file_type = data.file_type;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (supabase.from("outputs") as any)

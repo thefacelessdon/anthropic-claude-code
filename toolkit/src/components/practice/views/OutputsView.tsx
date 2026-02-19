@@ -96,6 +96,9 @@ export function OutputsView({
   const [formDecision, setFormDecision] = useState("");
   const [formStakeholder, setFormStakeholder] = useState("");
   const [formContact, setFormContact] = useState("");
+  const [formDocMode, setFormDocMode] = useState<"upload" | "url">("upload");
+  const [formDocUrl, setFormDocUrl] = useState("");
+  const [formDocFile, setFormDocFile] = useState<File | null>(null);
 
   // Drafting state
   const [draftSummary, setDraftSummary] = useState("");
@@ -136,12 +139,29 @@ export function OutputsView({
   const handleCreate = useCallback(async () => {
     if (!formTitle.trim()) return;
     setSaving(true);
+
+    // Resolve document URL
+    let fileUrl: string | undefined;
+    let fileType: string | undefined;
+
+    if (formDocMode === "url" && formDocUrl.trim()) {
+      fileUrl = formDocUrl.trim();
+      fileType = "url";
+    } else if (formDocMode === "upload" && formDocFile) {
+      // Create a local object URL as a placeholder — in production this would upload to Supabase Storage
+      fileUrl = URL.createObjectURL(formDocFile);
+      const ext = formDocFile.name.split(".").pop()?.toLowerCase();
+      fileType = ext === "pdf" ? "pdf" : ext === "docx" || ext === "doc" ? "docx" : ext || "unknown";
+    }
+
     const result = await createOutput({
       output_type: formType,
       title: formTitle.trim(),
       triggered_by_decision_id: formDecision || undefined,
       target_stakeholder_id: formStakeholder || undefined,
       delivered_to_contact: formContact.trim() || undefined,
+      file_url: fileUrl,
+      file_type: fileType,
     });
     setSaving(false);
     if (result.id) {
@@ -151,7 +171,7 @@ export function OutputsView({
       setDraftContent("");
       setView("draft");
     }
-  }, [formTitle, formType, formDecision, formStakeholder, formContact]);
+  }, [formTitle, formType, formDecision, formStakeholder, formContact, formDocMode, formDocUrl, formDocFile]);
 
   const handleSaveDraft = useCallback(async () => {
     if (!editingId) return;
@@ -371,6 +391,58 @@ export function OutputsView({
             />
           </div>
 
+          {/* Document */}
+          <div>
+            <label className="block text-[12px] font-semibold text-dim uppercase tracking-[0.06em] mb-1.5">Document</label>
+            <div className="flex items-center gap-1 mb-2">
+              <button
+                type="button"
+                onClick={() => { setFormDocMode("upload"); setFormDocUrl(""); }}
+                className={`px-3 py-1 text-[12px] rounded transition-colors ${
+                  formDocMode === "upload" ? "bg-surface-inset text-text font-medium" : "text-muted hover:text-text"
+                }`}
+              >
+                Upload file
+              </button>
+              <button
+                type="button"
+                onClick={() => { setFormDocMode("url"); setFormDocFile(null); }}
+                className={`px-3 py-1 text-[12px] rounded transition-colors ${
+                  formDocMode === "url" ? "bg-surface-inset text-text font-medium" : "text-muted hover:text-text"
+                }`}
+              >
+                Link (Google Docs, etc.)
+              </button>
+            </div>
+            {formDocMode === "upload" ? (
+              <div>
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  onChange={(e) => setFormDocFile(e.target.files?.[0] || null)}
+                  className="w-full text-[13px] text-text file:mr-3 file:px-3 file:py-1.5 file:rounded file:border file:border-border file:bg-surface-inset file:text-[12px] file:font-medium file:text-text file:cursor-pointer"
+                />
+                {formDocFile && (
+                  <p className="text-[12px] text-muted mt-1.5">
+                    {formDocFile.name} ({(formDocFile.size / 1024).toFixed(0)} KB)
+                  </p>
+                )}
+                <p className="text-[11px] text-dim mt-1">PDF or DOCX</p>
+              </div>
+            ) : (
+              <div>
+                <input
+                  type="url"
+                  value={formDocUrl}
+                  onChange={(e) => setFormDocUrl(e.target.value)}
+                  placeholder="https://docs.google.com/document/d/..."
+                  className="w-full text-[13px] text-text bg-surface border border-border rounded-md px-3 py-2 placeholder:text-dim focus:outline-none focus:border-accent"
+                />
+                <p className="text-[11px] text-dim mt-1">Google Docs link, Dropbox link, or any document URL</p>
+              </div>
+            )}
+          </div>
+
           <button
             onClick={handleCreate}
             disabled={!formTitle.trim() || saving}
@@ -427,6 +499,9 @@ export function OutputsView({
             setFormDecision("");
             setFormStakeholder("");
             setFormContact("");
+            setFormDocMode("upload");
+            setFormDocUrl("");
+            setFormDocFile(null);
             setView("create");
           }}
           className="px-4 py-1.5 text-[13px] font-medium text-text border border-border rounded hover:bg-surface-inset transition-colors mb-1"
@@ -611,7 +686,51 @@ export function OutputsView({
               </DetailSection>
             )}
 
-            {/* 2. Summary */}
+            {/* 2. Document — embedded viewer or link */}
+            {selected.file_url && (
+              <DetailSection title="Document">
+                {selected.file_type === "pdf" ? (
+                  <div className="space-y-2">
+                    <iframe
+                      src={selected.file_url}
+                      className="w-full h-[500px] rounded-md border border-border bg-white"
+                      title={`${selected.title} — PDF`}
+                    />
+                    <a
+                      href={selected.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-[13px] text-accent hover:underline"
+                    >
+                      Open PDF in new tab →
+                    </a>
+                  </div>
+                ) : (
+                  <a
+                    href={selected.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 px-4 py-3 bg-surface-inset border border-border rounded-md hover:bg-elevated transition-colors"
+                  >
+                    <span className="text-[20px]">
+                      {selected.file_type === "docx" || selected.file_type === "doc" ? "📄" : selected.file_type === "url" ? "🔗" : "📎"}
+                    </span>
+                    <div>
+                      <p className="text-[13px] font-medium text-text">Open document</p>
+                      <p className="text-[11px] text-dim">
+                        {selected.file_type === "url"
+                          ? selected.file_url.length > 60
+                            ? selected.file_url.slice(0, 60) + "…"
+                            : selected.file_url
+                          : `${(selected.file_type || "file").toUpperCase()} document`}
+                      </p>
+                    </div>
+                  </a>
+                )}
+              </DetailSection>
+            )}
+
+            {/* 3. Summary */}
             {selected.summary && (
               <DetailSection title="Summary">
                 <p className="text-[13px] text-text leading-relaxed">
@@ -620,16 +739,16 @@ export function OutputsView({
               </DetailSection>
             )}
 
-            {/* 3. Content — rendered as formatted prose */}
+            {/* 4. Content — notes and additional context */}
             {selected.content && (
-              <DetailSection title="Content">
+              <DetailSection title={selected.file_url ? "Notes" : "Content"}>
                 <div className="text-[13px] text-text leading-loose whitespace-pre-wrap">
                   {selected.content}
                 </div>
               </DetailSection>
             )}
 
-            {/* 4. Sources Referenced */}
+            {/* 5. Sources Referenced */}
             {(() => {
               const outputRefs = refsByOutput[selected.id] || [];
               return (
@@ -716,7 +835,7 @@ export function OutputsView({
               );
             })()}
 
-            {/* 5. Record */}
+            {/* 6. Record */}
             <DetailSection title="Record">
               <div className="space-y-1 text-[12px] text-dim">
                 <p>Created: {formatDate(selected.created_at)}</p>
@@ -827,6 +946,13 @@ function OutputCard({
       {output.summary && (
         <p className="text-[13px] text-muted leading-relaxed line-clamp-2 mt-1.5">
           {output.summary}
+        </p>
+      )}
+
+      {/* Document indicator */}
+      {output.file_url && (
+        <p className="text-[12px] text-dim mt-1.5">
+          {output.file_type === "pdf" ? "📄 PDF attached" : output.file_type === "docx" || output.file_type === "doc" ? "📄 DOCX attached" : "🔗 Document linked"}
         </p>
       )}
 

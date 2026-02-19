@@ -365,6 +365,8 @@ CREATE TABLE outputs (
   delivered_at TIMESTAMPTZ,
   delivered_to_contact TEXT,
   delivery_notes TEXT,
+  file_url TEXT,
+  file_type TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
