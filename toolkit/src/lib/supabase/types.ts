@@ -292,6 +292,12 @@ export interface Tag {
   category: string | null;
 }
 
+export interface DecisionDependency {
+  decision_id: string;
+  depends_on_id: string;
+  description: string | null;
+}
+
 // ─── View types ──────────────────────────────────────
 
 export interface StaleEntry {
