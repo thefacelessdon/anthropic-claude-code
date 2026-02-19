@@ -707,7 +707,22 @@ INSERT INTO submissions (ecosystem_id, submission_type, data, submitter_name, su
 
 ('a0000000-0000-0000-0000-000000000001', 'decision_flag', '{"decision": "Momentary is considering changing their residency model from 4-week to 2-week residencies to serve more artists", "stakeholder": "The Momentary", "approximate_timing": "Decision expected by April 2026"}', 'Anonymous', NULL, 'The Momentary', 'pending'),
 
-('a0000000-0000-0000-0000-000000000001', 'investment_verification', '{"organization": "Crystal Bridges", "initiative": "Community Art Education Program", "reported_amount": 175000, "correction": "Actual amount was $195,000 including in-kind facility costs", "additional_info": "Program also includes a parent engagement component not captured in original entry"}', 'Jamie Rodriguez', 'jamie@crystalbridges.org', 'Crystal Bridges', 'pending');
+('a0000000-0000-0000-0000-000000000001', 'investment_verification', '{"organization": "Crystal Bridges", "initiative": "Community Art Education Program", "reported_amount": 175000, "correction": "Actual amount was $195,000 including in-kind facility costs", "additional_info": "Program also includes a parent engagement component not captured in original entry"}', 'Jamie Rodriguez', 'jamie@crystalbridges.org', 'Crystal Bridges', 'pending'),
+
+-- Practitioner tip (pending)
+('a0000000-0000-0000-0000-000000000001', 'practitioner_tip', '{"name": "Jordan Blake", "discipline": "Ceramics + Community Workshop Facilitation", "tenure": "Just moved to Fayetteville, about 6 months", "context": "Met Jordan at a CACHE event. They run community ceramics workshops and are looking to build a practice here. Previously based in Memphis.", "website": "https://jordanblakestudio.com"}', 'David Kim', 'david@cachenwarkansas.org', NULL, 'pending'),
+
+-- Interest signals (interest_signal type — separate tab)
+('a0000000-0000-0000-0000-000000000001', 'interest_signal', '{"opportunity_id": "f0000000-0000-0000-0000-000000000006", "opportunity_title": "Community Art Commission - North Forest Trail", "discipline": "Public Art + Fabrication", "note": "This is exactly the type of site-specific work I do. Happy to share my wayfinding project as reference."}', 'James Torres', 'james@example.com', NULL, 'pending'),
+
+('a0000000-0000-0000-0000-000000000001', 'interest_signal', '{"opportunity_id": "f0000000-0000-0000-0000-000000000001", "opportunity_title": "CACHE Creative Economy Micro-Grants", "discipline": "Sound Design", "note": null}', 'Alex Rivera', 'alex.rivera@example.com', NULL, 'pending'),
+
+('a0000000-0000-0000-0000-000000000001', 'interest_signal', '{"opportunity_id": "f0000000-0000-0000-0000-000000000001", "opportunity_title": "CACHE Creative Economy Micro-Grants", "discipline": "Visual Arts + Murals", "note": "Planning to apply for mural supplies and community engagement materials."}', 'Elena Vasquez', 'elena.v@example.com', NULL, 'pending'),
+
+-- Reviewed submissions (audit trail)
+('a0000000-0000-0000-0000-000000000001', 'opportunity', '{"title": "Performing Arts Residency at the Momentary", "type": "residency", "amount": "$3,000 stipend + housing", "deadline": "2026-03-01", "eligibility": "Performing artists, dancers, theater makers", "description": "4-week residency with studio space, housing, and stipend. Culminates in a public performance."}', 'Lisa Park', 'lisa@themomentary.org', 'The Momentary', 'approved'),
+
+('a0000000-0000-0000-0000-000000000001', 'decision_flag', '{"decision": "Crystal Bridges considering expanding parking structure", "stakeholder": "Crystal Bridges", "approximate_timing": "2026-2027"}', 'Anonymous', NULL, 'Crystal Bridges', 'rejected');
 
 
 -- ──────────────────────────────────────────

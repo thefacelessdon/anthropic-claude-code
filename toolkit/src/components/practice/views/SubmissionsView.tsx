@@ -1,19 +1,26 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
-import { DetailPanel, DetailSection } from "@/components/ui/DetailPanel";
+import React, { useState, useEffect, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { DetailPanel, DetailSection, InlineRefCard } from "@/components/ui/DetailPanel";
 import { StatusBadge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
-import { formatDate, formatCurrency } from "@/lib/utils/formatting";
+import { formatDate } from "@/lib/utils/formatting";
 import type { Submission, SubmissionStatus } from "@/lib/supabase/types";
+import {
+  approveOpportunity,
+  approveDecisionFlag,
+  approvePractitionerTip,
+  rejectSubmission,
+} from "@/app/(practice)/submissions/actions";
 
-/* ── Constants ─────────────────────────────────────── */
+// ─── Constants ──────────────────────────────────────
 
 const SUBMISSION_TYPE_LABELS: Record<string, string> = {
   opportunity: "Opportunity Submission",
   decision_flag: "Decision Flag",
   investment_verification: "Investment Verification",
+  practitioner_tip: "Practitioner Tip",
+  interest_signal: "Interest Signal",
 };
 
 const STATUS_COLORS: Record<SubmissionStatus, "orange" | "green" | "red"> = {
@@ -22,40 +29,84 @@ const STATUS_COLORS: Record<SubmissionStatus, "orange" | "green" | "red"> = {
   rejected: "red",
 };
 
-/* ── Helpers ───────────────────────────────────────── */
+const TYPE_BADGE_COLORS: Record<string, "blue" | "purple" | "green" | "orange" | "dim"> = {
+  opportunity: "blue",
+  decision_flag: "purple",
+  investment_verification: "green",
+  practitioner_tip: "orange",
+  interest_signal: "dim",
+};
 
-function extractTitle(submission: Submission): string {
-  const { data } = submission;
-  if (typeof data.title === "string" && data.title) return data.title;
-  if (typeof data.name === "string" && data.name) return data.name;
-  return SUBMISSION_TYPE_LABELS[submission.submission_type] || "Submission";
-}
+// ─── Types ──────────────────────────────────────────
 
-function formatDataKey(key: string): string {
-  return key
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function renderDataValue(value: unknown): string {
-  if (value === null || value === undefined) return "\u2014";
-  if (typeof value === "number") return String(value);
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (typeof value === "string") return value;
-  return JSON.stringify(value);
-}
-
-/* ── Props ─────────────────────────────────────────── */
+type PractitionerRef = { id: string; name: string; discipline: string | null };
+type OrgRef = { id: string; name: string };
+type OppRef = { id: string; title: string; source_name: string | null };
 
 interface SubmissionsViewProps {
   submissions: Submission[];
+  orgNames: string[];
+  practitionerList: PractitionerRef[];
+  existingOpportunities: OppRef[];
+  allOrgs: OrgRef[];
 }
 
-/* ── Component ─────────────────────────────────────── */
+// ─── Helpers ────────────────────────────────────────
 
-export function SubmissionsView({ submissions }: SubmissionsViewProps) {
+function extractTitle(s: Submission): string {
+  const { data } = s;
+  if (typeof data.title === "string" && data.title) return data.title;
+  if (typeof data.name === "string" && data.name) return data.name;
+  if (typeof data.decision === "string") return (data.decision as string).slice(0, 80) + ((data.decision as string).length > 80 ? "…" : "");
+  if (typeof data.what_being_decided === "string") return (data.what_being_decided as string).slice(0, 80);
+  if (typeof data.organization === "string") return `${data.organization} — Verification`;
+  if (s.submission_type === "interest_signal" && typeof data.opportunity_title === "string") return `Interest in ${data.opportunity_title}`;
+  return SUBMISSION_TYPE_LABELS[s.submission_type] || "Submission";
+}
+
+function matchOrg(name: string | undefined, orgNames: string[]): boolean {
+  if (!name) return false;
+  const lower = name.toLowerCase();
+  return orgNames.some((n) => n.includes(lower) || lower.includes(n));
+}
+
+function matchPractitioner(name: string | undefined, practitioners: PractitionerRef[]): PractitionerRef | null {
+  if (!name) return null;
+  const lowerName = name.toLowerCase();
+  return practitioners.find((p) => p.name.toLowerCase() === lowerName) || null;
+}
+
+function findSimilarOpportunities(title: string | undefined, opps: OppRef[]): OppRef[] {
+  if (!title) return [];
+  const words = title.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+  return opps.filter((o) => {
+    const lower = o.title.toLowerCase();
+    return words.some((w) => lower.includes(w));
+  }).slice(0, 3);
+}
+
+function navigateTo(path: string) {
+  window.location.href = path;
+}
+
+// ─── Component ──────────────────────────────────────
+
+export function SubmissionsView({
+  submissions,
+  orgNames,
+  practitionerList,
+  existingOpportunities,
+}: SubmissionsViewProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"pending" | "signals" | "reviewed">("pending");
+  const [saving, setSaving] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+  const [showRejectForm, setShowRejectForm] = useState(false);
   const searchParams = useSearchParams();
+  const router = useRouter();
+
+  // Editable fields for approval
+  const [editFields, setEditFields] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const openId = searchParams.get("open");
@@ -65,188 +116,451 @@ export function SubmissionsView({ submissions }: SubmissionsViewProps) {
   const submissionMap = new Map(submissions.map((s) => [s.id, s]));
   const selected = selectedId ? submissionMap.get(selectedId) : null;
 
-  const pending = submissions.filter((s) => s.status === "pending");
-  const reviewed = submissions.filter((s) => s.status !== "pending");
+  const pending = submissions.filter((s) => s.status === "pending" && s.submission_type !== "interest_signal");
+  const signals = submissions.filter((s) => s.submission_type === "interest_signal");
+  const reviewed = submissions.filter((s) => s.status === "approved" || s.status === "rejected");
+
+  // When selecting a submission, populate edit fields
+  useEffect(() => {
+    if (selected && selected.status === "pending") {
+      const fields: Record<string, string> = {};
+      Object.entries(selected.data).forEach(([key, value]) => {
+        fields[key] = value !== null && value !== undefined ? String(value) : "";
+      });
+      setEditFields(fields);
+      setShowRejectForm(false);
+      setRejectReason("");
+    }
+  }, [selected]);
+
+  // ─── Approval Handlers ────────────────────────────
+
+  const handleApproveOpportunity = useCallback(async () => {
+    if (!selected) return;
+    setSaving(true);
+    const result = await approveOpportunity(selected.id, {
+      title: editFields.title || "",
+      opportunity_type: editFields.opportunity_type || editFields.type || "grant",
+      source_name: editFields.source_name || editFields.source || undefined,
+      amount_min: editFields.amount_min ? Number(editFields.amount_min) : undefined,
+      amount_max: editFields.amount_max ? Number(editFields.amount_max) : undefined,
+      deadline: editFields.deadline || undefined,
+      description: editFields.description || undefined,
+      eligibility: editFields.eligibility || undefined,
+      application_url: editFields.application_url || undefined,
+    });
+    setSaving(false);
+    if (result.success) {
+      setSelectedId(null);
+      router.refresh();
+    }
+  }, [selected, editFields, router]);
+
+  const handleApproveDecisionFlag = useCallback(async () => {
+    if (!selected) return;
+    setSaving(true);
+    const result = await approveDecisionFlag(selected.id, {
+      decision_title: editFields.decision_title || editFields.decision || editFields.what_being_decided || "",
+      stakeholder_name: editFields.stakeholder || editFields.organization || undefined,
+      description: editFields.description || editFields.what_being_decided || editFields.decision || undefined,
+      locks_date: editFields.locks_date || editFields.approximate_lock_date || undefined,
+      intervention_needed: editFields.intervention_needed || undefined,
+    });
+    setSaving(false);
+    if (result.success) {
+      setSelectedId(null);
+      router.refresh();
+    }
+  }, [selected, editFields, router]);
+
+  const handleApprovePractitionerTip = useCallback(async () => {
+    if (!selected) return;
+    setSaving(true);
+    const result = await approvePractitionerTip(selected.id, {
+      name: editFields.name || "",
+      discipline: editFields.discipline || "",
+      tenure: editFields.tenure || undefined,
+      notes: editFields.context || undefined,
+      website: editFields.website || undefined,
+    });
+    setSaving(false);
+    if (result.success) {
+      setSelectedId(null);
+      router.refresh();
+    }
+  }, [selected, editFields, router]);
+
+  const handleReject = useCallback(async () => {
+    if (!selected) return;
+    setSaving(true);
+    await rejectSubmission(selected.id, rejectReason.trim() || undefined);
+    setSaving(false);
+    setSelectedId(null);
+    setShowRejectForm(false);
+    router.refresh();
+  }, [selected, rejectReason, router]);
+
+  // ─── Render ───────────────────────────────────────
 
   return (
     <>
-      {/* ── Pending Submissions ──────────────────────── */}
-      {pending.length > 0 && (
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-4 pb-2 border-b border-border">
-            <h3 className="font-display text-base font-semibold text-text">
-              Pending Review
-            </h3>
-            <span className="text-[11px] text-dim bg-surface-inset px-1.5 py-0.5 rounded font-mono">
-              {pending.length}
+      {/* Tab header */}
+      <div className="flex items-center gap-1 mb-6 border-b border-border">
+        {([
+          { key: "pending" as const, label: "Pending", count: pending.length },
+          { key: "signals" as const, label: "Interest Signals", count: signals.length },
+          { key: "reviewed" as const, label: "Reviewed", count: reviewed.length },
+        ]).map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-4 py-2.5 text-[13px] font-medium transition-colors relative ${
+              activeTab === tab.key ? "text-text" : "text-muted hover:text-text"
+            }`}
+          >
+            {tab.label}
+            <span className="ml-1.5 text-[11px] text-dim bg-surface-inset px-1.5 py-0.5 rounded font-mono">
+              {tab.count}
             </span>
-          </div>
+            {activeTab === tab.key && (
+              <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-text rounded-t" />
+            )}
+          </button>
+        ))}
+      </div>
 
-          <div className="space-y-3">
-            {pending.map((s) => (
-              <PendingCard
-                key={s.id}
-                submission={s}
-                isSelected={selectedId === s.id}
-                onSelect={() => setSelectedId(s.id)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Reviewed Submissions ─────────────────────── */}
-      {reviewed.length > 0 && (
-        <div className="mt-8">
-          <div className="flex items-center gap-2 mb-4 pb-2 border-b border-border">
-            <h3 className="font-display text-base font-semibold text-text">
-              Reviewed
-            </h3>
-            <span className="text-[11px] text-dim bg-surface-inset px-1.5 py-0.5 rounded font-mono">
-              {reviewed.length}
-            </span>
-          </div>
-
-          <div className="space-y-1">
-            {reviewed.map((s) => (
-              <div
-                key={s.id}
-                onClick={() => setSelectedId(s.id)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-md cursor-pointer transition-colors ${
-                  selectedId === s.id
-                    ? "bg-surface-inset ring-1 ring-accent"
-                    : "hover:bg-surface-inset"
-                }`}
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-medium text-text truncate">
-                    {extractTitle(s)}
-                  </p>
-                  <p className="text-[11px] text-dim truncate">
-                    {SUBMISSION_TYPE_LABELS[s.submission_type] || s.submission_type}
-                  </p>
-                </div>
-                <StatusBadge
-                  label={s.status}
-                  color={STATUS_COLORS[s.status]}
+      {/* ── Pending Tab ──────────────────────────────── */}
+      {activeTab === "pending" && (
+        <>
+          {pending.length === 0 ? (
+            <p className="text-[13px] text-muted py-8 text-center">No submissions pending review.</p>
+          ) : (
+            <div className="space-y-3">
+              {pending.map((s) => (
+                <PendingCard
+                  key={s.id}
+                  submission={s}
+                  orgNames={orgNames}
+                  existingOpportunities={existingOpportunities}
+                  practitionerList={practitionerList}
+                  selected={selectedId === s.id}
+                  onClick={() => setSelectedId(s.id)}
                 />
-                <span className="text-[11px] text-dim shrink-0">
-                  {formatDate(s.created_at)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
-      {/* ── Empty State ──────────────────────────────── */}
-      {submissions.length === 0 && (
-        <div className="text-center py-16">
-          <p className="text-[14px] text-muted">No submissions yet.</p>
-        </div>
+      {/* ── Interest Signals Tab ─────────────────────── */}
+      {activeTab === "signals" && (
+        <>
+          {signals.length === 0 ? (
+            <p className="text-[13px] text-muted py-8 text-center">No interest signals yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {signals.map((s) => (
+                <InterestSignalCard
+                  key={s.id}
+                  submission={s}
+                  practitionerList={practitionerList}
+                  selected={selectedId === s.id}
+                  onClick={() => setSelectedId(s.id)}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Reviewed Tab ─────────────────────────────── */}
+      {activeTab === "reviewed" && (
+        <>
+          {reviewed.length === 0 ? (
+            <p className="text-[13px] text-muted py-8 text-center">No reviewed submissions yet.</p>
+          ) : (
+            <div className="space-y-1">
+              {reviewed.map((s) => (
+                <div
+                  key={s.id}
+                  onClick={() => setSelectedId(s.id)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-md cursor-pointer transition-colors ${
+                    selectedId === s.id ? "bg-surface-inset ring-1 ring-accent" : "hover:bg-surface-inset"
+                  }`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-medium text-text truncate">{extractTitle(s)}</p>
+                    <p className="text-[11px] text-dim truncate">
+                      {SUBMISSION_TYPE_LABELS[s.submission_type] || s.submission_type}
+                      {s.created_entity_id && " → Created entry"}
+                    </p>
+                  </div>
+                  <StatusBadge label={s.status === "approved" ? "Approved ✓" : "Rejected"} color={STATUS_COLORS[s.status]} />
+                  <span className="text-[11px] text-dim shrink-0">{formatDate(s.created_at)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* ── Detail Panel ─────────────────────────────── */}
       <DetailPanel
         isOpen={!!selected}
-        onClose={() => setSelectedId(null)}
+        onClose={() => { setSelectedId(null); setShowRejectForm(false); }}
         title={selected ? extractTitle(selected) : undefined}
+        backLabel="Back to submissions"
         subtitle={
-          selected && (
-            <div className="flex items-center gap-2 flex-wrap">
+          selected ? (
+            <div className="flex items-center gap-2 flex-wrap mt-1">
               <StatusBadge
                 label={SUBMISSION_TYPE_LABELS[selected.submission_type] || selected.submission_type}
-                color="blue"
+                color={TYPE_BADGE_COLORS[selected.submission_type] || "blue"}
               />
-              <StatusBadge
-                label={selected.status}
-                color={STATUS_COLORS[selected.status]}
-              />
+              <StatusBadge label={selected.status} color={STATUS_COLORS[selected.status]} />
+              <span className="text-[12px] text-dim font-mono">{formatDate(selected.created_at)}</span>
             </div>
-          )
+          ) : undefined
         }
-        backLabel="Back to submissions"
       >
         {selected && (
           <>
-            {/* Submission Details — all data fields */}
-            <DetailSection title="Submission Details">
-              <div className="space-y-3">
-                {Object.entries(selected.data).map(([key, value]) => (
-                  <div key={key}>
-                    <p className="text-[11px] text-dim uppercase tracking-wider mb-0.5">
-                      {formatDataKey(key)}
-                    </p>
-                    <p className="text-[13px] text-text leading-relaxed">
-                      {renderDataValue(value)}
-                    </p>
-                  </div>
-                ))}
-                {Object.keys(selected.data).length === 0 && (
-                  <p className="text-[13px] text-muted">No additional data.</p>
-                )}
-              </div>
-            </DetailSection>
-
-            {/* Submitter */}
-            <DetailSection title="Submitter">
-              <div className="space-y-3">
-                {selected.submitter_name && (
-                  <div>
-                    <p className="text-[11px] text-dim uppercase tracking-wider mb-0.5">Name</p>
-                    <p className="text-[13px] text-text">{selected.submitter_name}</p>
-                  </div>
-                )}
-                {selected.submitter_email && (
-                  <div>
-                    <p className="text-[11px] text-dim uppercase tracking-wider mb-0.5">Email</p>
-                    <p className="text-[13px] text-text font-mono">{selected.submitter_email}</p>
-                  </div>
-                )}
-                {selected.submitter_org && (
-                  <div>
-                    <p className="text-[11px] text-dim uppercase tracking-wider mb-0.5">Organization</p>
-                    <p className="text-[13px] text-text">{selected.submitter_org}</p>
-                  </div>
-                )}
-              </div>
-            </DetailSection>
-
-            {/* Review (only if reviewed) */}
-            {selected.status !== "pending" && (
+            {/* ── Review Checks ─────────────────────── */}
+            {selected.status === "pending" && selected.submission_type !== "interest_signal" && (
               <DetailSection title="Review">
-                <div className="space-y-3">
-                  {selected.reviewed_by && (
-                    <div>
-                      <p className="text-[11px] text-dim uppercase tracking-wider mb-0.5">Reviewed By</p>
-                      <p className="text-[13px] text-text">{selected.reviewed_by}</p>
-                    </div>
-                  )}
-                  {selected.reviewed_at && (
-                    <div>
-                      <p className="text-[11px] text-dim uppercase tracking-wider mb-0.5">Reviewed At</p>
-                      <p className="text-[13px] text-text">{formatDate(selected.reviewed_at)}</p>
-                    </div>
-                  )}
-                  {selected.review_notes && (
-                    <div>
-                      <p className="text-[11px] text-dim uppercase tracking-wider mb-0.5">Notes</p>
-                      <p className="text-[13px] text-text leading-relaxed bg-surface-inset rounded-md px-4 py-3">
-                        {selected.review_notes}
+                <div className="space-y-2 text-[13px]">
+                  {/* Org match check */}
+                  {((): React.ReactNode => {
+                    const orgName = (selected.data.source as string) || (selected.data.source_name as string) || (selected.data.organization as string) || (selected.data.stakeholder as string);
+                    if (!orgName) return null;
+                    const found = matchOrg(orgName, orgNames);
+                    return (
+                      <p className={found ? "text-status-green" : "text-status-orange"}>
+                        {found ? "✓" : "⚠"} {found
+                          ? `"${orgName}" is in the ecosystem map`
+                          : `Source org "${orgName}" not in ecosystem map`
+                        }
                       </p>
+                    );
+                  })()}
+
+                  {/* Deduplication check for opportunities */}
+                  {selected.submission_type === "opportunity" && ((): React.ReactNode => {
+                    const title = selected.data.title as string;
+                    const similar = findSimilarOpportunities(title, existingOpportunities);
+                    if (similar.length === 0) {
+                      return <p className="text-status-green">✓ No similar opportunities found (deduplication check passed)</p>;
+                    }
+                    return (
+                      <div>
+                        <p className="text-status-orange">⚠ Similar opportunities found:</p>
+                        {similar.map((o) => (
+                          <p key={o.id} className="text-dim ml-4 text-[12px]">
+                            &ldquo;{o.title}&rdquo; {o.source_name ? `(${o.source_name})` : ""}
+                          </p>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Practitioner match for tips */}
+                  {selected.submission_type === "practitioner_tip" && ((): React.ReactNode => {
+                    const name = selected.data.name as string;
+                    const match = matchPractitioner(name, practitionerList);
+                    if (match) {
+                      return <p className="text-status-orange">⚠ &ldquo;{name}&rdquo; may already exist in ecosystem map: {match.name} ({match.discipline || "—"})</p>;
+                    }
+                    return <p className="text-status-green">✓ No existing practitioner match found</p>;
+                  })()}
+                </div>
+              </DetailSection>
+            )}
+
+            {/* ── Interest Signal Detail ──────────── */}
+            {selected.submission_type === "interest_signal" && (
+              <DetailSection title="Signal Details">
+                <div className="space-y-3">
+                  <div className="space-y-1.5 text-[13px]">
+                    <p><span className="text-dim">Name:</span> {selected.submitter_name || "—"}</p>
+                    <p><span className="text-dim">Email:</span> <span className="font-mono">{selected.submitter_email || "—"}</span></p>
+                    <p><span className="text-dim">Discipline:</span> {(selected.data.discipline as string) || "—"}</p>
+                    <p><span className="text-dim">Opportunity:</span> {(selected.data.opportunity_title as string) || "—"}</p>
+                    {typeof selected.data.note === "string" && (selected.data.note as string).length > 0 ? (
+                      <p className="text-text bg-surface-inset rounded-md px-4 py-3 border-l-2 border-accent italic mt-2">
+                        &ldquo;{selected.data.note as string}&rdquo;
+                      </p>
+                    ) : null}
+                  </div>
+
+                  {/* Practitioner matching */}
+                  {((): React.ReactNode => {
+                    const match = matchPractitioner(selected.submitter_name || undefined, practitionerList);
+                    if (match) {
+                      return (
+                        <div className="mt-2">
+                          <p className="text-[12px] text-status-green mb-2">✓ Matches ecosystem map practitioner:</p>
+                          <InlineRefCard
+                            title={match.name}
+                            subtitle={match.discipline || "—"}
+                            accentColor="gold"
+                            onClick={() => navigateTo(`/ecosystem-map?open=${match.id}`)}
+                          />
+                        </div>
+                      );
+                    }
+                    return (
+                      <p className="text-[12px] text-status-orange mt-2">⚠ No match in ecosystem map</p>
+                    );
+                  })()}
+
+                  {/* Actions */}
+                  {typeof selected.data.opportunity_id === "string" && selected.data.opportunity_id ? (
+                    <button
+                      onClick={() => navigateTo(`/opportunities/${selected.data.opportunity_id as string}`)}
+                      className="text-[12px] text-accent hover:underline mt-2"
+                    >
+                      View opportunity →
+                    </button>
+                  ) : null}
+                </div>
+              </DetailSection>
+            )}
+
+            {/* ── Editable Fields (pending non-signals) ── */}
+            {selected.status === "pending" && selected.submission_type !== "interest_signal" && (
+              <DetailSection title="Edit Before Approving" subtitle="Modify fields before the entity enters the system">
+                <div className="space-y-3">
+                  {Object.entries(editFields).map(([key, value]) => (
+                    <div key={key}>
+                      <label className="block text-[11px] text-dim uppercase tracking-[0.06em] mb-1">
+                        {key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                      </label>
+                      {value.length > 80 || key === "description" || key === "context" || key === "what_being_decided" || key === "decision" || key === "additional_info" ? (
+                        <textarea
+                          value={value}
+                          onChange={(e) => setEditFields((f) => ({ ...f, [key]: e.target.value }))}
+                          rows={3}
+                          className="w-full text-[13px] text-text bg-surface border border-border rounded px-2 py-1.5 resize-y focus:outline-none focus:border-accent"
+                        />
+                      ) : (
+                        <input
+                          type={key.includes("date") || key === "deadline" ? "date" : key.includes("amount") || key === "reported_amount" ? "number" : key.includes("url") || key.includes("link") || key === "website" ? "url" : "text"}
+                          value={value}
+                          onChange={(e) => setEditFields((f) => ({ ...f, [key]: e.target.value }))}
+                          className="w-full text-[13px] text-text bg-surface border border-border rounded px-2 py-1.5 focus:outline-none focus:border-accent"
+                        />
+                      )}
                     </div>
+                  ))}
+
+                  {/* Contextual action buttons */}
+                  <div className="flex items-center gap-2 pt-2 flex-wrap">
+                    {selected.submission_type === "opportunity" && (
+                      <button
+                        onClick={handleApproveOpportunity}
+                        disabled={saving}
+                        className="px-4 py-2 text-[13px] font-medium text-bg bg-text rounded hover:opacity-90 disabled:opacity-50"
+                      >
+                        {saving ? "Creating..." : "Approve & Create Opportunity"}
+                      </button>
+                    )}
+                    {selected.submission_type === "decision_flag" && (
+                      <button
+                        onClick={handleApproveDecisionFlag}
+                        disabled={saving}
+                        className="px-4 py-2 text-[13px] font-medium text-bg bg-text rounded hover:opacity-90 disabled:opacity-50"
+                      >
+                        {saving ? "Creating..." : "Create Decision Entry"}
+                      </button>
+                    )}
+                    {selected.submission_type === "practitioner_tip" && (
+                      <button
+                        onClick={handleApprovePractitionerTip}
+                        disabled={saving}
+                        className="px-4 py-2 text-[13px] font-medium text-bg bg-text rounded hover:opacity-90 disabled:opacity-50"
+                      >
+                        {saving ? "Creating..." : "Add to Ecosystem Map"}
+                      </button>
+                    )}
+                    {selected.submission_type === "investment_verification" && (
+                      <button disabled className="px-4 py-2 text-[13px] font-medium text-bg bg-text rounded opacity-50 cursor-not-allowed">
+                        Apply Correction
+                      </button>
+                    )}
+
+                    {!showRejectForm ? (
+                      <button
+                        onClick={() => setShowRejectForm(true)}
+                        className="px-4 py-2 text-[13px] text-muted hover:text-text transition-colors"
+                      >
+                        {selected.submission_type === "decision_flag" || selected.submission_type === "investment_verification" ? "Dismiss" : "Reject"}
+                      </button>
+                    ) : (
+                      <div className="w-full space-y-2 mt-2">
+                        <input
+                          type="text"
+                          value={rejectReason}
+                          onChange={(e) => setRejectReason(e.target.value)}
+                          placeholder="Reason for rejection..."
+                          className="w-full text-[13px] text-text bg-surface border border-border rounded px-2 py-1.5 placeholder:text-dim focus:outline-none focus:border-accent"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleReject}
+                            disabled={saving}
+                            className="px-3 py-1 text-[12px] text-status-red hover:underline disabled:opacity-50"
+                          >
+                            {saving ? "..." : "Confirm rejection"}
+                          </button>
+                          <button
+                            onClick={() => setShowRejectForm(false)}
+                            className="px-3 py-1 text-[12px] text-muted hover:text-text"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </DetailSection>
+            )}
+
+            {/* ── Submitter ──────────────────────── */}
+            {(selected.submitter_name || selected.submitter_email || selected.submitter_org) && selected.submission_type !== "interest_signal" && (
+              <DetailSection title="Submitter">
+                <div className="space-y-1.5 text-[13px]">
+                  {selected.submitter_name && <p><span className="text-dim">Name:</span> {selected.submitter_name}</p>}
+                  {selected.submitter_email && <p><span className="text-dim">Email:</span> <span className="font-mono">{selected.submitter_email}</span></p>}
+                  {selected.submitter_org && <p><span className="text-dim">Organization:</span> {selected.submitter_org}</p>}
+                </div>
+              </DetailSection>
+            )}
+
+            {/* ── Review Info (reviewed submissions) ── */}
+            {selected.status !== "pending" && (
+              <DetailSection title="Review Outcome">
+                <div className="space-y-1.5 text-[13px]">
+                  {selected.reviewed_at && <p><span className="text-dim">Reviewed:</span> {formatDate(selected.reviewed_at)}</p>}
+                  {selected.review_notes && (
+                    <p className="text-text bg-surface-inset rounded-md px-4 py-3 mt-2">
+                      {selected.review_notes}
+                    </p>
+                  )}
+                  {selected.created_entity_id && (
+                    <p className="text-[12px] text-accent mt-2">
+                      Created entity: <span className="font-mono">{selected.created_entity_id.slice(0, 8)}…</span>
+                    </p>
                   )}
                 </div>
               </DetailSection>
             )}
 
-            {/* Record Metadata */}
+            {/* ── Record ──────────────────────────── */}
             <DetailSection title="Record">
               <div className="space-y-1 text-[12px] text-dim">
-                <p>Created: {formatDate(selected.created_at)}</p>
-                {selected.created_entity_id && (
-                  <p>Created Entity: <span className="font-mono">{selected.created_entity_id}</span></p>
-                )}
+                <p>Submitted: {formatDate(selected.created_at)}</p>
+                {selected.reviewed_at && <p>Reviewed: {formatDate(selected.reviewed_at)}</p>}
               </div>
             </DetailSection>
           </>
@@ -256,219 +570,150 @@ export function SubmissionsView({ submissions }: SubmissionsViewProps) {
   );
 }
 
-/* ── Pending Card Sub-components ───────────────────── */
+// ─── Pending Card ───────────────────────────────────
 
-interface PendingCardProps {
+function PendingCard({
+  submission,
+  orgNames,
+  existingOpportunities,
+  practitionerList,
+  selected,
+  onClick,
+}: {
   submission: Submission;
-  isSelected: boolean;
-  onSelect: () => void;
-}
+  orgNames: string[];
+  existingOpportunities: OppRef[];
+  practitionerList: PractitionerRef[];
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const { data, submission_type } = submission;
+  const title = extractTitle(submission);
+  const orgName = (data.source as string) || (data.source_name as string) || (data.organization as string) || (data.stakeholder as string);
+  const orgFound = matchOrg(orgName, orgNames);
 
-function PendingCard({ submission, isSelected, onSelect }: PendingCardProps) {
-  const { submission_type } = submission;
+  const similar = submission_type === "opportunity" ? findSimilarOpportunities(data.title as string, existingOpportunities) : [];
+  const pracMatch = submission_type === "practitioner_tip" ? matchPractitioner(data.name as string, practitionerList) : null;
 
   return (
     <div
-      onClick={onSelect}
-      className={`bg-surface-card border rounded-lg px-5 py-4 cursor-pointer transition-colors ${
-        isSelected
-          ? "border-accent ring-1 ring-accent"
-          : "border-border hover:border-border-medium"
+      onClick={onClick}
+      className={`bg-surface border border-border rounded-lg px-5 py-4 cursor-pointer transition-colors ${
+        selected ? "border-accent ring-1 ring-accent" : "hover:border-border-medium"
       }`}
     >
-      {submission_type === "opportunity" && (
-        <OpportunityCard submission={submission} />
+      {/* Header */}
+      <div className="flex items-center gap-2 flex-wrap mb-2">
+        <StatusBadge label={SUBMISSION_TYPE_LABELS[submission_type] || submission_type} color={TYPE_BADGE_COLORS[submission_type] || "blue"} />
+        <StatusBadge label="Pending" color="orange" />
+        <span className="text-[12px] text-dim font-mono ml-auto">{formatDate(submission.created_at)}</span>
+      </div>
+
+      {/* Title */}
+      <h3 className="text-[15px] font-medium text-text leading-snug">{title}</h3>
+
+      {/* Submitter */}
+      {submission.submitter_name && (
+        <p className="text-[12px] text-muted mt-1">
+          {submission_type === "decision_flag" ? "Flagged" : "Submitted"} by {submission.submitter_name}
+          {submission.submitter_org ? ` (${submission.submitter_org})` : ""}
+        </p>
       )}
-      {submission_type === "decision_flag" && (
-        <DecisionFlagCard submission={submission} />
-      )}
-      {submission_type === "investment_verification" && (
-        <InvestmentVerificationCard submission={submission} />
-      )}
-      {!["opportunity", "decision_flag", "investment_verification"].includes(submission_type) && (
-        <GenericCard submission={submission} />
-      )}
+
+      {/* Type-specific details */}
+      {submission_type === "opportunity" ? (
+        <div className="flex items-center gap-3 mt-2 text-[12px] text-muted flex-wrap">
+          {typeof data.type === "string" ? <span className="capitalize">{data.type}</span> : null}
+          {typeof data.amount === "string" ? <><span className="text-dim">·</span><span className="font-mono text-accent">{data.amount}</span></> : null}
+          {typeof data.deadline === "string" ? <><span className="text-dim">·</span><span>Deadline: {formatDate(data.deadline)}</span></> : null}
+        </div>
+      ) : null}
+
+      {submission_type === "decision_flag" && (typeof data.decision === "string" || typeof data.what_being_decided === "string") ? (
+        <p className="text-[13px] text-text bg-surface-inset rounded-md px-4 py-3 border-l-2 border-status-purple italic mt-2 line-clamp-2">
+          &ldquo;{(data.decision as string) || (data.what_being_decided as string)}&rdquo;
+        </p>
+      ) : null}
+
+      {submission_type === "practitioner_tip" ? (
+        <p className="text-[12px] text-muted mt-2">
+          {data.discipline as string}{typeof data.tenure === "string" ? ` · ${data.tenure}` : ""}
+        </p>
+      ) : null}
+
+      {submission_type === "investment_verification" && typeof data.correction === "string" ? (
+        <p className="text-[12px] text-muted mt-2 line-clamp-2">
+          {data.correction}
+        </p>
+      ) : null}
+
+      {/* Ecosystem match indicators */}
+      <div className="mt-3 space-y-1">
+        {orgName && (
+          <p className={`text-[11px] ${orgFound ? "text-status-green" : "text-status-orange"}`}>
+            {orgFound ? "✓" : "⚠"} {orgFound ? `${orgName} is in ecosystem map` : `"${orgName}" not in ecosystem map`}
+          </p>
+        )}
+        {similar.length > 0 && (
+          <p className="text-[11px] text-status-orange">⚠ Similar: &ldquo;{similar[0].title}&rdquo; already listed</p>
+        )}
+        {pracMatch && (
+          <p className="text-[11px] text-status-orange">⚠ &ldquo;{data.name as string}&rdquo; may already exist in ecosystem map</p>
+        )}
+      </div>
     </div>
   );
 }
 
-function OpportunityCard({ submission }: { submission: Submission }) {
+// ─── Interest Signal Card ───────────────────────────
+
+function InterestSignalCard({
+  submission,
+  practitionerList,
+  selected,
+  onClick,
+}: {
+  submission: Submission;
+  practitionerList: PractitionerRef[];
+  selected: boolean;
+  onClick: () => void;
+}) {
   const { data } = submission;
-  const title = typeof data.title === "string" ? data.title : "Untitled Opportunity";
-  const oppType = typeof data.opportunity_type === "string" ? data.opportunity_type : null;
-  const amount = typeof data.amount === "number" ? data.amount : null;
-  const deadline = typeof data.deadline === "string" ? data.deadline : null;
-  const eligibility = typeof data.eligibility === "string" ? data.eligibility : null;
+  const match = matchPractitioner(submission.submitter_name || undefined, practitionerList);
 
   return (
-    <>
-      <div className="flex items-center gap-2 flex-wrap mb-2">
-        <StatusBadge label="Opportunity Submission" color="blue" />
-        <StatusBadge label="Pending" color="orange" />
-      </div>
+    <div
+      onClick={onClick}
+      className={`bg-surface border border-border rounded-lg px-5 py-4 cursor-pointer transition-colors ${
+        selected ? "border-accent ring-1 ring-accent" : "hover:border-border-medium"
+      }`}
+    >
+      {/* Name + discipline */}
+      <p className="text-[15px] font-medium text-text">
+        {submission.submitter_name || "Anonymous"} · {(data.discipline as string) || "—"}
+      </p>
 
-      <h3 className="text-[15px] font-medium text-text leading-snug">{title}</h3>
+      {/* Opportunity */}
+      <p className="text-[12px] text-muted mt-1">
+        Interested in: {(data.opportunity_title as string) || "—"}
+      </p>
 
-      {submission.submitter_name && (
-        <p className="text-[12px] text-muted mt-1">
-          Submitted by {submission.submitter_name}
-          {submission.submitter_org ? ` (${submission.submitter_org})` : ""}
+      {/* Note */}
+      {typeof data.note === "string" && data.note.length > 0 ? (
+        <p className="text-[13px] text-text bg-surface-inset rounded-md px-4 py-3 border-l-2 border-accent italic mt-2 line-clamp-2">
+          &ldquo;{data.note}&rdquo;
         </p>
+      ) : (
+        <p className="text-[12px] text-dim mt-1 italic">No note</p>
       )}
 
-      <div className="flex items-center gap-3 mt-3 text-[12px] text-muted flex-wrap">
-        {oppType && <span className="capitalize">{oppType}</span>}
-        {oppType && amount !== null && <span className="text-dim">&middot;</span>}
-        {amount !== null && (
-          <span className="font-mono font-medium text-accent">{formatCurrency(amount)}</span>
-        )}
-        {deadline && (
-          <>
-            <span className="text-dim">&middot;</span>
-            <span>Deadline: {formatDate(deadline)}</span>
-          </>
-        )}
-      </div>
-
-      {eligibility && (
-        <p className="text-[12px] text-muted mt-2 leading-relaxed line-clamp-2">
-          Eligibility: {eligibility}
-        </p>
-      )}
-
-      <div className="flex items-center gap-2 mt-4" onClick={(e) => e.stopPropagation()}>
-        <Button size="sm" variant="primary">Approve & Create</Button>
-        <Button size="sm" variant="ghost">Reject</Button>
-        <Button size="sm" variant="ghost">View Details</Button>
-      </div>
-    </>
-  );
-}
-
-function DecisionFlagCard({ submission }: { submission: Submission }) {
-  const { data } = submission;
-  const description = typeof data.description === "string" ? data.description : null;
-  const expectedDate = typeof data.expected_date === "string" ? data.expected_date : null;
-
-  return (
-    <>
-      <div className="flex items-center gap-2 flex-wrap mb-2">
-        <StatusBadge label="Decision Flag" color="purple" />
-        <StatusBadge label="Pending" color="orange" />
-      </div>
-
-      {description && (
-        <p className="text-[13px] text-text leading-relaxed bg-surface-inset rounded-md px-4 py-3 border-l-2 border-status-purple italic">
-          &ldquo;{description}&rdquo;
-        </p>
-      )}
-
-      {submission.submitter_name && (
-        <p className="text-[12px] text-muted mt-2">
-          Flagged by {submission.submitter_name}
-          {submission.submitter_org ? ` (${submission.submitter_org})` : ""}
-        </p>
-      )}
-
-      {expectedDate && (
-        <p className="text-[12px] text-muted mt-1">
-          Expected date: <span className="font-mono">{formatDate(expectedDate)}</span>
-        </p>
-      )}
-
-      <div className="flex items-center gap-2 mt-4" onClick={(e) => e.stopPropagation()}>
-        <Button size="sm" variant="primary">Create Decision Entry</Button>
-        <Button size="sm" variant="ghost">Dismiss</Button>
-      </div>
-    </>
-  );
-}
-
-function InvestmentVerificationCard({ submission }: { submission: Submission }) {
-  const { data } = submission;
-  const investmentName = typeof data.investment_name === "string" ? data.investment_name : (typeof data.name === "string" ? data.name : "Unknown Investment");
-  const correction = typeof data.correction === "string" ? data.correction : null;
-  const additionalInfo = typeof data.additional_info === "string" ? data.additional_info : null;
-
-  return (
-    <>
-      <div className="flex items-center gap-2 flex-wrap mb-2">
-        <StatusBadge label="Investment Verification" color="green" />
-        <StatusBadge label="Pending" color="orange" />
-      </div>
-
-      <h3 className="text-[15px] font-medium text-text leading-snug">{investmentName}</h3>
-
-      {submission.submitter_name && (
-        <p className="text-[12px] text-muted mt-1">
-          Submitted by {submission.submitter_name}
-          {submission.submitter_org ? ` (${submission.submitter_org})` : ""}
-        </p>
-      )}
-
-      {correction && (
-        <div className="mt-3">
-          <p className="text-[11px] text-dim uppercase tracking-wider mb-0.5">Correction</p>
-          <p className="text-[13px] text-text leading-relaxed">{correction}</p>
-        </div>
-      )}
-
-      {additionalInfo && (
-        <div className="mt-2">
-          <p className="text-[11px] text-dim uppercase tracking-wider mb-0.5">Additional Info</p>
-          <p className="text-[12px] text-muted leading-relaxed line-clamp-3">{additionalInfo}</p>
-        </div>
-      )}
-
-      <div className="flex items-center gap-2 mt-4" onClick={(e) => e.stopPropagation()}>
-        <Button size="sm" variant="primary">Apply Correction</Button>
-        <Button size="sm" variant="ghost">Dismiss</Button>
-      </div>
-    </>
-  );
-}
-
-function GenericCard({ submission }: { submission: Submission }) {
-  const title = extractTitle(submission);
-
-  return (
-    <>
-      <div className="flex items-center gap-2 flex-wrap mb-2">
-        <StatusBadge
-          label={SUBMISSION_TYPE_LABELS[submission.submission_type] || submission.submission_type}
-          color="dim"
-        />
-        <StatusBadge label="Pending" color="orange" />
-      </div>
-
-      <h3 className="text-[15px] font-medium text-text leading-snug">{title}</h3>
-
-      {submission.submitter_name && (
-        <p className="text-[12px] text-muted mt-1">
-          Submitted by {submission.submitter_name}
-          {submission.submitter_org ? ` (${submission.submitter_org})` : ""}
-        </p>
-      )}
-
-      {Object.entries(submission.data).length > 0 && (
-        <div className="mt-3 space-y-1">
-          {Object.entries(submission.data).slice(0, 3).map(([key, value]) => (
-            <p key={key} className="text-[12px] text-muted truncate">
-              <span className="text-dim">{formatDataKey(key)}:</span> {renderDataValue(value)}
-            </p>
-          ))}
-          {Object.entries(submission.data).length > 3 && (
-            <p className="text-[11px] text-dim">
-              +{Object.entries(submission.data).length - 3} more fields
-            </p>
-          )}
-        </div>
-      )}
-
-      <div className="flex items-center gap-2 mt-4" onClick={(e) => e.stopPropagation()}>
-        <Button size="sm" variant="primary">Review</Button>
-        <Button size="sm" variant="ghost">Dismiss</Button>
-      </div>
-    </>
+      {/* Practitioner match */}
+      <p className={`text-[11px] mt-2 ${match ? "text-status-green" : "text-status-orange"}`}>
+        {match
+          ? `✓ Matches ecosystem map: ${match.name} (${match.discipline || "—"})`
+          : "⚠ No match in ecosystem map"
+        }
+      </p>
+    </div>
   );
 }
