@@ -7,7 +7,7 @@ import {
   INVESTMENT_CATEGORY_LABELS,
 } from "@/lib/utils/constants";
 import { InvestmentsView } from "@/components/practice/views/InvestmentsView";
-import type { Investment, Practitioner } from "@/lib/supabase/types";
+import type { Investment, Practitioner, Organization } from "@/lib/supabase/types";
 
 const NWA_ECOSYSTEM_ID = "a0000000-0000-0000-0000-000000000001";
 
@@ -18,7 +18,7 @@ export const metadata = {
 export default async function InvestmentsPage() {
   const supabase = createClient();
 
-  const [{ data }, { data: practData }] = await Promise.all([
+  const [{ data }, { data: practData }, { data: orgData }] = await Promise.all([
     supabase
       .from("investments")
       .select("*")
@@ -28,10 +28,22 @@ export default async function InvestmentsPage() {
       .from("practitioners")
       .select("*")
       .eq("ecosystem_id", NWA_ECOSYSTEM_ID),
+    supabase
+      .from("organizations")
+      .select("id, name")
+      .eq("ecosystem_id", NWA_ECOSYSTEM_ID),
   ]);
 
-  const investments = (data as Investment[]) || [];
   const practitioners = (practData as Practitioner[]) || [];
+
+  // Resolve source_name from source_org_id when source_name is null
+  const orgNameMap = new Map(
+    ((orgData as Pick<Organization, "id" | "name">[]) || []).map((o) => [o.id, o.name])
+  );
+  const investments: Investment[] = ((data as Investment[]) || []).map((inv) => ({
+    ...inv,
+    source_name: inv.source_name || (inv.source_org_id ? orgNameMap.get(inv.source_org_id) : null) || null,
+  }));
 
   const totalAmount = investments.reduce((sum, inv) => sum + (inv.amount || 0), 0);
   const compounding = investments.filter((i) => i.compounding === "compounding");
