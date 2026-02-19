@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { CardList, ListCard } from "@/components/ui/CardGrid";
 import { DetailPanel, DetailSection, InlineRefCard } from "@/components/ui/DetailPanel";
 import { StatusBadge } from "@/components/ui/Badge";
@@ -64,6 +64,7 @@ export function InvestmentsView({ investments, practitioners }: InvestmentsViewP
   const [view, setView] = useState<"list" | "landscape">("list");
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const searchParams = useSearchParams();
+  const router = useRouter();
 
   useEffect(() => {
     const openId = searchParams.get("open");
@@ -115,6 +116,13 @@ export function InvestmentsView({ investments, practitioners }: InvestmentsViewP
     setFilters({ ...EMPTY_FILTERS, source, compounding });
     setView("list");
   }
+
+  const handleNavigateDiscipline = useCallback(
+    (discipline: string) => {
+      router.push(`/ecosystem-map?tab=practitioners&discipline=${encodeURIComponent(discipline)}`);
+    },
+    [router]
+  );
 
   return (
     <>
@@ -190,6 +198,7 @@ export function InvestmentsView({ investments, practitioners }: InvestmentsViewP
           onFilterSource={handleFilterSource}
           onFilterCategory={handleFilterCategory}
           onFilterSourceCompounding={handleFilterSourceCompounding}
+          onNavigateDiscipline={handleNavigateDiscipline}
         />
       )}
 

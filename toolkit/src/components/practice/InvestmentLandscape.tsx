@@ -44,7 +44,23 @@ interface InvestmentLandscapeProps {
   onFilterSource: (source: string) => void;
   onFilterCategory: (category: string) => void;
   onFilterSourceCompounding: (source: string, compounding: string) => void;
+  onNavigateDiscipline?: (discipline: string) => void;
 }
+
+// ─── Constants ──────────────────────────────────────
+
+const CATEGORY_TO_DISCIPLINE: Record<string, string> = {
+  direct_artist_support: "Visual Arts",
+  public_art: "Visual Arts",
+  artist_development: "Visual Arts",
+  programming: "Performance",
+  infrastructure: "Infrastructure",
+  strategic_planning: "Strategic Planning",
+  education_training: "Education",
+  sector_development: "Sector Development",
+  institutional_capacity: "Institutional Capacity",
+  communications: "Communications",
+};
 
 // ─── Data Aggregation ───────────────────────────────
 
@@ -115,18 +131,7 @@ function buildDisciplineData(investments: Investment[], practitioners: Practitio
   });
 
   // Map categories to disciplines approximately
-  const categoryToDiscipline: Record<string, string> = {
-    direct_artist_support: "Visual Arts",
-    public_art: "Visual Arts",
-    artist_development: "Visual Arts",
-    programming: "Performance",
-    infrastructure: "Infrastructure",
-    strategic_planning: "Strategic Planning",
-    education_training: "Education",
-    sector_development: "Sector Development",
-    institutional_capacity: "Institutional Capacity",
-    communications: "Communications",
-  };
+  const categoryToDiscipline = CATEGORY_TO_DISCIPLINE;
 
   // Build combined data from practitioner disciplines
   const allDiscs = new Set([
@@ -168,6 +173,7 @@ export function InvestmentLandscape({
   onFilterSource,
   onFilterCategory,
   onFilterSourceCompounding,
+  onNavigateDiscipline,
 }: InvestmentLandscapeProps) {
   const bySource = aggregateBySource(investments);
   const byCategory = aggregateByCategory(investments);
@@ -214,6 +220,7 @@ export function InvestmentLandscape({
               radius={[0, 3, 3, 0]}
               barSize={20}
               cursor="pointer"
+              isAnimationActive={false}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               onClick={(_data: any) => {
                 onFilterSource(_data.name);
@@ -257,6 +264,7 @@ export function InvestmentLandscape({
               radius={[0, 3, 3, 0]}
               barSize={20}
               cursor="pointer"
+              isAnimationActive={false}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               onClick={(_data: any) => {
                 onFilterCategory(_data.name);
@@ -306,6 +314,7 @@ export function InvestmentLandscape({
               fill="#6B9E6A"
               barSize={20}
               cursor="pointer"
+              isAnimationActive={false}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               onClick={(_data: any) => {
                 onFilterSourceCompounding(_data.name, "compounding");
@@ -317,6 +326,7 @@ export function InvestmentLandscape({
               fill="#C45B5B"
               barSize={20}
               cursor="pointer"
+              isAnimationActive={false}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               onClick={(_data: any) => {
                 onFilterSourceCompounding(_data.name, "not_compounding");
@@ -329,9 +339,34 @@ export function InvestmentLandscape({
               barSize={20}
               radius={[0, 3, 3, 0]}
               cursor="pointer"
+              isAnimationActive={false}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               onClick={(_data: any) => {
                 onFilterSourceCompounding(_data.name, "too_early");
+              }}
+              label={{
+                position: "right" as const,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                content: (props: any) => {
+                  const { x, y, width, height, value } = props;
+                  // Only show label when the too_early segment has a value (last segment)
+                  // Find total from the data array
+                  const idx = props.index;
+                  const total = compoundingBySource[idx]?.total;
+                  if (value === undefined || !total) return null;
+                  return (
+                    <text
+                      x={x + width + 8}
+                      y={y + height / 2}
+                      fill="#E8E4E0"
+                      fontSize={13}
+                      dominantBaseline="middle"
+                      fontFamily="var(--font-mono)"
+                    >
+                      {formatShort(total)}
+                    </text>
+                  );
+                },
               }}
             />
           </BarChart>
@@ -352,6 +387,14 @@ export function InvestmentLandscape({
             Too early
           </span>
         </div>
+
+        {/* Editorial annotation */}
+        <p className="text-[13px] text-muted mt-4 leading-relaxed italic">
+          City of Bentonville&rsquo;s investments are primarily not compounding &mdash;
+          public art Phases 1 and 2 produced work but didn&rsquo;t create conditions
+          for each other. State-level operating grants duplicate CACHE funding without
+          coordination, and corporate sponsorships renew annually without evolving.
+        </p>
       </div>
 
       {/* ── Viz 4: Investment vs. Practitioner Reality ──── */}
@@ -361,7 +404,7 @@ export function InvestmentLandscape({
             Where Investment Meets — and Misses — Practitioner Reality
           </h3>
           <p className="text-[13px] text-dim mb-6">
-            Funding allocation vs. practitioner presence
+            Funding allocation vs. practitioner presence by discipline
           </p>
 
           {/* Column headers */}
@@ -381,10 +424,19 @@ export function InvestmentLandscape({
               >
                 <span className="text-[13px] text-muted text-right truncate">{d.name}</span>
 
-                {/* Investment bar */}
-                <div className="flex items-center gap-2">
+                {/* Investment bar — click filters list by related category */}
+                <div
+                  className="flex items-center gap-2 cursor-pointer group"
+                  onClick={() => {
+                    // Find a category that maps to this discipline
+                    const catEntry = Object.entries(CATEGORY_TO_DISCIPLINE).find(
+                      ([, disc]) => disc === d.name
+                    );
+                    if (catEntry) onFilterCategory(catEntry[0]);
+                  }}
+                >
                   <div
-                    className="h-4 rounded-sm bg-accent transition-all"
+                    className="h-4 rounded-sm bg-accent transition-all group-hover:opacity-80"
                     style={{
                       width: `${maxInvestment > 0 ? (d.investment / maxInvestment) * 100 : 0}%`,
                       minWidth: d.investment > 0 ? "2px" : "0px",
@@ -395,10 +447,17 @@ export function InvestmentLandscape({
                   </span>
                 </div>
 
-                {/* Practitioner bar */}
-                <div className="flex items-center gap-2">
+                {/* Practitioner bar — click navigates to ecosystem map practitioners tab */}
+                <div
+                  className={`flex items-center gap-2 ${onNavigateDiscipline ? "cursor-pointer group" : ""}`}
+                  onClick={() => {
+                    if (onNavigateDiscipline && d.practitionerCount > 0) {
+                      onNavigateDiscipline(d.name);
+                    }
+                  }}
+                >
                   <div
-                    className="h-4 rounded-sm bg-dim transition-all"
+                    className={`h-4 rounded-sm bg-dim transition-all ${onNavigateDiscipline ? "group-hover:opacity-80" : ""}`}
                     style={{
                       width: `${maxPractitioners > 0 ? (d.practitionerCount / maxPractitioners) * 100 : 0}%`,
                       minWidth: d.practitionerCount > 0 ? "2px" : "0px",
@@ -416,6 +475,14 @@ export function InvestmentLandscape({
               </div>
             ))}
           </div>
+
+          {/* Editorial annotation */}
+          <p className="text-[13px] text-muted mt-6 leading-relaxed italic">
+            Music and film practitioners report the highest retention risk,
+            yet combined investment in these disciplines is a fraction of visual arts
+            allocation. Ceramics and literary arts receive no direct investment
+            despite active practitioners in both fields.
+          </p>
         </div>
       )}
     </div>
