@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { OpportunitiesView } from "@/components/practice/views/OpportunitiesView";
-import type { Opportunity, Investment, Organization } from "@/lib/supabase/types";
+import type { Opportunity, Investment, Organization, Practitioner } from "@/lib/supabase/types";
 
 const NWA_ECOSYSTEM_ID = "a0000000-0000-0000-0000-000000000001";
 
@@ -16,7 +16,7 @@ export const metadata = {
 export default async function OpportunitiesPage() {
   const supabase = createClient();
 
-  const [{ data: oppData }, { data: investmentData }, { data: orgData }, { data: interestData }] = await Promise.all([
+  const [{ data: oppData }, { data: investmentData }, { data: orgData }, { data: interestData }, { data: practitionerData }] = await Promise.all([
     supabase
       .from("opportunities")
       .select("*")
@@ -31,7 +31,12 @@ export default async function OpportunitiesPage() {
       .select("id, name")
       .eq("ecosystem_id", NWA_ECOSYSTEM_ID),
     raw(supabase, "opportunity_interests")
-      .select("id, opportunity_id, profile_id, practitioner_name, practitioner_email, practitioner_discipline, notes, status, created_at"),
+      .select("id, opportunity_id, profile_id, practitioner_name, practitioner_email, practitioner_discipline, notes, status, practitioner_id, created_at"),
+    supabase
+      .from("practitioners")
+      .select("id, name, discipline")
+      .eq("ecosystem_id", NWA_ECOSYSTEM_ID)
+      .order("name"),
   ]);
 
   // Resolve source_name from source_org_id when source_name is null
@@ -85,6 +90,7 @@ export default async function OpportunitiesPage() {
     practitioner_discipline: string | null;
     notes: string | null;
     status: string;
+    practitioner_id: string | null;
     created_at: string;
   }
   const interests = (interestData as InterestRecord[]) || [];
@@ -93,6 +99,13 @@ export default async function OpportunitiesPage() {
     if (!interestsByOpp[interest.opportunity_id]) interestsByOpp[interest.opportunity_id] = [];
     interestsByOpp[interest.opportunity_id].push(interest);
   }
+
+  // Build practitioners list for linking interest signals
+  const practitioners = ((practitionerData as Pick<Practitioner, "id" | "name" | "discipline">[]) || []).map((p) => ({
+    id: p.id,
+    name: p.name,
+    discipline: p.discipline,
+  }));
 
   return (
     <div className="space-y-section">
@@ -113,6 +126,7 @@ export default async function OpportunitiesPage() {
           investmentsByOrg={investmentsByOrg}
           oppsByOrg={oppsByOrg}
           interestsByOpp={interestsByOpp}
+          practitioners={practitioners}
         />
       )}
     </div>

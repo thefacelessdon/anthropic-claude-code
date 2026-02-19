@@ -133,7 +133,14 @@ interface InterestRecord {
   practitioner_discipline: string | null;
   notes: string | null;
   status: string;
+  practitioner_id: string | null;
   created_at: string;
+}
+
+interface PractitionerRef {
+  id: string;
+  name: string;
+  discipline: string | null;
 }
 
 const INTEREST_STATUS_LABELS: Record<string, string> = {
@@ -162,6 +169,7 @@ interface OpportunitiesViewProps {
   investmentsByOrg: Record<string, InvSummary[]>;
   oppsByOrg: Record<string, OppRef[]>;
   interestsByOpp?: Record<string, InterestRecord[]>;
+  practitioners?: PractitionerRef[];
 }
 
 type TabKey = "open" | "closing_soon" | "closed";
@@ -180,6 +188,7 @@ export function OpportunitiesView({
   investmentsByOrg,
   oppsByOrg,
   interestsByOpp = {},
+  practitioners = [],
 }: OpportunitiesViewProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("open");
@@ -506,7 +515,7 @@ export function OpportunitiesView({
               </DetailSection>
             )}
 
-            {/* Engagement — Interest Tracking */}
+            {/* Interest Signals */}
             {(() => {
               const interests = interestsByOpp[selected.id] || [];
               if (interests.length === 0) return null;
@@ -519,7 +528,7 @@ export function OpportunitiesView({
               const pending = interests.filter((i) => i.status === "expressed").length;
 
               return (
-                <DetailSection title="Engagement">
+                <DetailSection title="Interest Signals">
                   <div className="space-y-4">
                     {/* Summary stats */}
                     <div className="text-[13px] text-text leading-relaxed">
@@ -554,41 +563,12 @@ export function OpportunitiesView({
                     {/* Individual interest records */}
                     <div className="space-y-2">
                       {interests.map((interest) => (
-                        <div
+                        <InterestSignalCard
                           key={interest.id}
-                          className="bg-surface-inset rounded-md px-3 py-2.5"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[13px] text-text font-medium truncate">
-                              {interest.practitioner_name || "Anonymous"}
-                            </span>
-                            <span
-                              className={`text-[11px] font-mono ${
-                                INTEREST_STATUS_COLORS[interest.status] || "text-dim"
-                              }`}
-                            >
-                              {INTEREST_STATUS_LABELS[interest.status] || interest.status}
-                            </span>
-                          </div>
-                          {interest.practitioner_discipline && (
-                            <p className="text-[12px] text-muted mt-0.5">
-                              {interest.practitioner_discipline}
-                            </p>
-                          )}
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[11px] text-dim font-mono">
-                              {new Date(interest.created_at).toLocaleDateString("en-US", {
-                                month: "short",
-                                day: "numeric",
-                              })}
-                            </span>
-                          </div>
-                          {interest.notes && (
-                            <p className="text-[12px] text-muted mt-1.5 italic leading-relaxed">
-                              &ldquo;{interest.notes}&rdquo;
-                            </p>
-                          )}
-                        </div>
+                          interest={interest}
+                          practitioners={practitioners}
+                          onNavigate={navigateTo}
+                        />
                       ))}
                     </div>
                   </div>
@@ -724,6 +704,204 @@ export function OpportunitiesView({
         )}
       </DetailPanel>
     </>
+  );
+}
+
+/* ── Interest Signal Card ──────────────────────────────── */
+
+function InterestSignalCard({
+  interest,
+  practitioners,
+  onNavigate,
+}: {
+  interest: InterestRecord;
+  practitioners: PractitionerRef[];
+  onNavigate: (path: string) => void;
+}) {
+  const [linking, setLinking] = useState(false);
+  const [linkDropdownOpen, setLinkDropdownOpen] = useState(false);
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+  const [localStatus, setLocalStatus] = useState(interest.status);
+  const [localPractitionerId, setLocalPractitionerId] = useState(interest.practitioner_id);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const linkedPractitioner = localPractitionerId
+    ? practitioners.find((p) => p.id === localPractitionerId)
+    : null;
+
+  const filteredPractitioners = searchQuery.trim()
+    ? practitioners.filter(
+        (p) =>
+          p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (p.discipline && p.discipline.toLowerCase().includes(searchQuery.toLowerCase()))
+      )
+    : practitioners;
+
+  async function handleLink(practitionerId: string) {
+    setLinking(true);
+    const { linkInterestToPractitioner } = await import(
+      "@/app/(practice)/opportunity-tracker/actions"
+    );
+    const result = await linkInterestToPractitioner(interest.id, practitionerId);
+    if (result.success) {
+      setLocalPractitionerId(practitionerId);
+    }
+    setLinking(false);
+    setLinkDropdownOpen(false);
+    setSearchQuery("");
+  }
+
+  async function handleUnlink() {
+    setLinking(true);
+    const { unlinkInterestFromPractitioner } = await import(
+      "@/app/(practice)/opportunity-tracker/actions"
+    );
+    const result = await unlinkInterestFromPractitioner(interest.id);
+    if (result.success) {
+      setLocalPractitionerId(null);
+    }
+    setLinking(false);
+  }
+
+  async function handleStatusChange(newStatus: string) {
+    const { updateInterestStatus } = await import(
+      "@/app/(practice)/opportunity-tracker/actions"
+    );
+    const result = await updateInterestStatus(interest.id, newStatus);
+    if (result.success) {
+      setLocalStatus(newStatus);
+    }
+    setStatusDropdownOpen(false);
+  }
+
+  return (
+    <div className="bg-surface-inset rounded-md px-3 py-2.5">
+      {/* Row 1: Name + Status */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[13px] text-text font-medium truncate">
+          {interest.practitioner_name || "Anonymous"}
+        </span>
+        <div className="relative shrink-0">
+          <button
+            onClick={() => setStatusDropdownOpen(!statusDropdownOpen)}
+            className={`text-[11px] font-mono px-1.5 py-0.5 rounded cursor-pointer hover:bg-surface transition-colors ${
+              INTEREST_STATUS_COLORS[localStatus] || "text-dim"
+            }`}
+          >
+            {INTEREST_STATUS_LABELS[localStatus] || localStatus}
+          </button>
+          {statusDropdownOpen && (
+            <div className="absolute right-0 top-full mt-1 z-20 bg-surface border border-border-medium rounded-md shadow-lg py-1 min-w-[140px]">
+              {Object.entries(INTEREST_STATUS_LABELS).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => handleStatusChange(key)}
+                  className={`block w-full text-left px-3 py-1.5 text-[12px] hover:bg-surface-inset transition-colors ${
+                    key === localStatus ? "text-accent font-medium" : "text-text"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Row 2: Discipline + Date */}
+      <div className="flex items-center gap-2 mt-0.5">
+        {interest.practitioner_discipline && (
+          <span className="text-[12px] text-muted">
+            {interest.practitioner_discipline}
+          </span>
+        )}
+        <span className="text-[11px] text-dim font-mono">
+          {new Date(interest.created_at).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+          })}
+        </span>
+      </div>
+
+      {/* Notes */}
+      {interest.notes && (
+        <p className="text-[12px] text-muted mt-1.5 italic leading-relaxed">
+          &ldquo;{interest.notes}&rdquo;
+        </p>
+      )}
+
+      {/* Practitioner link */}
+      <div className="mt-2 pt-2 border-t border-border">
+        {linkedPractitioner ? (
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-dim">Linked to:</span>
+            <span
+              className="text-[12px] text-accent cursor-pointer hover:underline"
+              onClick={() => onNavigate(`/ecosystem-map?open=${linkedPractitioner.id}`)}
+            >
+              {linkedPractitioner.name}
+              {linkedPractitioner.discipline && (
+                <span className="text-dim font-normal"> &middot; {linkedPractitioner.discipline}</span>
+              )}
+            </span>
+            <button
+              onClick={handleUnlink}
+              disabled={linking}
+              className="text-[11px] text-dim hover:text-status-red transition-colors ml-auto"
+            >
+              Unlink
+            </button>
+          </div>
+        ) : (
+          <div className="relative">
+            {linkDropdownOpen ? (
+              <div className="space-y-1.5">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search practitioners..."
+                  autoFocus
+                  className="w-full text-[12px] px-2 py-1.5 bg-surface border border-border-medium rounded-md text-text placeholder:text-dim focus:outline-none focus:border-accent"
+                />
+                <div className="max-h-[140px] overflow-y-auto rounded-md border border-border-medium bg-surface">
+                  {filteredPractitioners.length === 0 ? (
+                    <p className="text-[12px] text-dim px-3 py-2">No matches</p>
+                  ) : (
+                    filteredPractitioners.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => handleLink(p.id)}
+                        disabled={linking}
+                        className="block w-full text-left px-3 py-1.5 text-[12px] text-text hover:bg-surface-inset transition-colors"
+                      >
+                        {p.name}
+                        {p.discipline && (
+                          <span className="text-dim ml-1">&middot; {p.discipline}</span>
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+                <button
+                  onClick={() => { setLinkDropdownOpen(false); setSearchQuery(""); }}
+                  className="text-[11px] text-dim hover:text-text"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setLinkDropdownOpen(true)}
+                className="text-[11px] text-dim hover:text-accent transition-colors"
+              >
+                Link to ecosystem map practitioner &rarr;
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
