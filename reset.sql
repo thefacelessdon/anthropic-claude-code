@@ -10,30 +10,17 @@
 -- STEP 0: NUKE EVERYTHING
 -- ──────────────────────────────────────────
 
--- Drop triggers first
+-- Drop trigger on auth.users (the only table we don't drop ourselves)
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-DROP TRIGGER IF EXISTS set_updated_at ON profiles;
-DROP TRIGGER IF EXISTS set_updated_at ON ecosystems;
-DROP TRIGGER IF EXISTS set_updated_at ON organizations;
-DROP TRIGGER IF EXISTS set_updated_at ON contacts;
-DROP TRIGGER IF EXISTS set_updated_at ON practitioners;
-DROP TRIGGER IF EXISTS set_updated_at ON investments;
-DROP TRIGGER IF EXISTS set_updated_at ON decisions;
-DROP TRIGGER IF EXISTS set_updated_at ON precedents;
-DROP TRIGGER IF EXISTS set_updated_at ON opportunities;
-DROP TRIGGER IF EXISTS set_updated_at ON narratives;
-DROP TRIGGER IF EXISTS set_updated_at ON outputs;
-DROP TRIGGER IF EXISTS set_updated_at ON public_profiles;
-DROP TRIGGER IF EXISTS set_updated_at ON engagements;
+
+-- Drop functions (CASCADE removes all dependent triggers automatically)
+DROP FUNCTION IF EXISTS update_updated_at() CASCADE;
+DROP FUNCTION IF EXISTS handle_new_user() CASCADE;
 
 -- Drop views
 DROP VIEW IF EXISTS upcoming_interventions CASCADE;
 DROP VIEW IF EXISTS ecosystem_stats CASCADE;
 DROP VIEW IF EXISTS stale_entries CASCADE;
-
--- Drop functions
-DROP FUNCTION IF EXISTS update_updated_at() CASCADE;
-DROP FUNCTION IF EXISTS handle_new_user() CASCADE;
 
 -- Drop tables (order matters for foreign keys)
 -- Migration tables (from migration-public-surface.sql)
