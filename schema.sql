@@ -456,7 +456,7 @@ CREATE TABLE activity_log (
 -- PUBLIC PROFILES (practitioner-facing)
 -- ──────────────────────────────────────────
 
-CREATE TABLE public_profiles (
+CREATE TABLE IF NOT EXISTS public_profiles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   name TEXT NOT NULL,
@@ -481,7 +481,7 @@ CREATE TABLE public_profiles (
 -- OPPORTUNITY INTERESTS (interest signals from public surface)
 -- ──────────────────────────────────────────
 
-CREATE TABLE opportunity_interests (
+CREATE TABLE IF NOT EXISTS opportunity_interests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   opportunity_id UUID NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
   profile_id UUID REFERENCES public_profiles(id) ON DELETE SET NULL,
@@ -502,7 +502,7 @@ CREATE TABLE opportunity_interests (
 -- ENGAGEMENTS (practitioner ↔ funder workspace)
 -- ──────────────────────────────────────────
 
-CREATE TABLE engagements (
+CREATE TABLE IF NOT EXISTS engagements (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   opportunity_id UUID REFERENCES opportunities(id) ON DELETE SET NULL,
   profile_id UUID NOT NULL REFERENCES public_profiles(id) ON DELETE CASCADE,
@@ -526,7 +526,7 @@ CREATE TABLE engagements (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE engagement_milestones (
+CREATE TABLE IF NOT EXISTS engagement_milestones (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   engagement_id UUID NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
@@ -537,7 +537,7 @@ CREATE TABLE engagement_milestones (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE engagement_deliverables (
+CREATE TABLE IF NOT EXISTS engagement_deliverables (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   engagement_id UUID NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
@@ -548,7 +548,7 @@ CREATE TABLE engagement_deliverables (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE engagement_activity (
+CREATE TABLE IF NOT EXISTS engagement_activity (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   engagement_id UUID NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
   actor TEXT NOT NULL,
