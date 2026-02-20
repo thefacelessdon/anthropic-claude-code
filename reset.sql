@@ -23,6 +23,8 @@ DROP TRIGGER IF EXISTS set_updated_at ON precedents;
 DROP TRIGGER IF EXISTS set_updated_at ON opportunities;
 DROP TRIGGER IF EXISTS set_updated_at ON narratives;
 DROP TRIGGER IF EXISTS set_updated_at ON outputs;
+DROP TRIGGER IF EXISTS set_updated_at ON public_profiles;
+DROP TRIGGER IF EXISTS set_updated_at ON engagements;
 
 -- Drop views
 DROP VIEW IF EXISTS upcoming_interventions CASCADE;
@@ -34,6 +36,15 @@ DROP FUNCTION IF EXISTS update_updated_at() CASCADE;
 DROP FUNCTION IF EXISTS handle_new_user() CASCADE;
 
 -- Drop tables (order matters for foreign keys)
+-- Migration tables (from migration-public-surface.sql)
+DROP TABLE IF EXISTS float_fund_transactions CASCADE;
+DROP TABLE IF EXISTS engagement_activity CASCADE;
+DROP TABLE IF EXISTS engagement_deliverables CASCADE;
+DROP TABLE IF EXISTS engagement_milestones CASCADE;
+DROP TABLE IF EXISTS engagements CASCADE;
+DROP TABLE IF EXISTS opportunity_interests CASCADE;
+DROP TABLE IF EXISTS public_profiles CASCADE;
+-- Core tables (from schema.sql)
 DROP TABLE IF EXISTS activity_log CASCADE;
 DROP TABLE IF EXISTS output_references CASCADE;
 DROP TABLE IF EXISTS submissions CASCADE;
