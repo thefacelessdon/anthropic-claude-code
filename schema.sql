@@ -453,6 +453,111 @@ CREATE TABLE activity_log (
 );
 
 -- ──────────────────────────────────────────
+-- PUBLIC PROFILES (practitioner-facing)
+-- ──────────────────────────────────────────
+
+CREATE TABLE public_profiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  primary_skill TEXT NOT NULL,
+  location TEXT NOT NULL,
+  bio TEXT,
+  portfolio_url TEXT,
+  additional_skills TEXT[],
+  rate_range TEXT,
+  availability TEXT DEFAULT 'available' CHECK (availability IN ('available', 'booked', 'selective')),
+  looking_for TEXT[],
+  business_entity_type TEXT,
+  is_verified BOOLEAN DEFAULT false,
+  verified_at TIMESTAMPTZ,
+  practitioner_id UUID REFERENCES practitioners(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ──────────────────────────────────────────
+-- OPPORTUNITY INTERESTS (interest signals from public surface)
+-- ──────────────────────────────────────────
+
+CREATE TABLE opportunity_interests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  opportunity_id UUID NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
+  profile_id UUID REFERENCES public_profiles(id) ON DELETE SET NULL,
+  practitioner_name TEXT,
+  practitioner_email TEXT,
+  practitioner_discipline TEXT,
+  notes TEXT,
+  status TEXT DEFAULT 'expressed' CHECK (status IN ('expressed', 'applied', 'awarded', 'not_awarded', 'withdrew', 'did_not_apply')),
+  followed_up_at TIMESTAMPTZ,
+  followup_response JSONB,
+  outcome_notes TEXT,
+  practitioner_id UUID REFERENCES practitioners(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ──────────────────────────────────────────
+-- ENGAGEMENTS (practitioner ↔ funder workspace)
+-- ──────────────────────────────────────────
+
+CREATE TABLE engagements (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  opportunity_id UUID REFERENCES opportunities(id) ON DELETE SET NULL,
+  profile_id UUID NOT NULL REFERENCES public_profiles(id) ON DELETE CASCADE,
+  funder_org_id UUID REFERENCES organizations(id) ON DELETE SET NULL,
+  funder_contact_email TEXT,
+  title TEXT NOT NULL,
+  scope TEXT,
+  total_amount NUMERIC,
+  start_date DATE,
+  end_date DATE,
+  payment_terms JSONB DEFAULT '[]'::jsonb,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'complete', 'cancelled')),
+  practitioner_confirmed_complete BOOLEAN DEFAULT false,
+  funder_confirmed_complete BOOLEAN DEFAULT false,
+  completed_at TIMESTAMPTZ,
+  payment_accelerated BOOLEAN DEFAULT false,
+  accelerated_payment_date DATE,
+  funder_payment_received_date DATE,
+  investment_id UUID REFERENCES investments(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE engagement_milestones (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  engagement_id UUID NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  due_date DATE,
+  completed_at TIMESTAMPTZ,
+  confirmed_at TIMESTAMPTZ,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE engagement_deliverables (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  engagement_id UUID NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  file_url TEXT,
+  submitted_at TIMESTAMPTZ,
+  accepted_at TIMESTAMPTZ,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE engagement_activity (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  engagement_id UUID NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+  actor TEXT NOT NULL,
+  action TEXT NOT NULL,
+  detail TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ──────────────────────────────────────────
 -- INDEXES
 -- ──────────────────────────────────────────
 
