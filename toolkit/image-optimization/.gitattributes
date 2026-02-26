@@ -1,0 +1,8 @@
+# Mark image files as binary so git doesn't try to diff them
+*.jpg  binary
+*.jpeg binary
+*.png  binary
+*.webp binary
+*.avif binary
+*.gif  binary
+*.svg  text
